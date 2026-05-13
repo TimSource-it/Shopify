@@ -11,6 +11,7 @@
         'sale_management',
         'stock',
         'account',
+        'web',
     ],
     'data': [
         'views/shopify_config_views.xml',
