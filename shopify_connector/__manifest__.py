@@ -13,8 +13,8 @@
         'account',
     ],
     'data': [
-        'views/shopify_config_views.xml',
         'security/ir.model.access.csv',
+        'views/shopify_config_views.xml',
         'data/shopify_cron.xml',
     ],
     'installable': True,
