@@ -13,8 +13,7 @@
                             invisible="state == 'connected'"/>
                     <button name="action_test_connection"
                             string="Test verbinding"
-                            type="object"
-                            invisible="state != 'connected'"/>
+                            type="object"/>
                     <field name="state" widget="statusbar"
                            statusbar_visible="draft,connected"/>
                 </header>
