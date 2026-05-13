@@ -5,9 +5,18 @@
         <field name="model">shopify.config</field>
         <field name="arch" type="xml">
             <form>
+                <header>
+                    <button name="action_test_connection"
+                            string="Test verbinding"
+                            type="object"
+                            class="btn-primary"/>
+                    <field name="state" widget="statusbar"
+                           statusbar_visible="draft,connected"/>
+                </header>
                 <sheet>
                     <group string="Winkelinstellingen">
                         <field name="shop_name"/>
+                        <field name="shop_url"/>
                         <field name="access_token" password="True"/>
                         <field name="active"/>
                     </group>
@@ -17,6 +26,11 @@
                         <field name="sync_inventory"/>
                         <field name="sync_customers"/>
                         <field name="allow_backorder"/>
+                    </group>
+                    <group string="Laatste synchronisaties">
+                        <field name="last_order_sync" readonly="1"/>
+                        <field name="last_product_sync" readonly="1"/>
+                        <field name="last_inventory_sync" readonly="1"/>
                     </group>
                 </sheet>
             </form>
@@ -29,7 +43,11 @@
         <field name="arch" type="xml">
             <list>
                 <field name="shop_name"/>
+                <field name="shop_url"/>
                 <field name="state"/>
+                <field name="sync_products"/>
+                <field name="sync_orders"/>
+                <field name="last_order_sync"/>
             </list>
         </field>
     </record>
