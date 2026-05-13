@@ -7,6 +7,10 @@ _logger = logging.getLogger(__name__)
 
 class ShopifyOAuthController(http.Controller):
 
+    @http.route('/shopify/test', type='http', auth='none')
+    def shopify_test(self, **kwargs):
+        return 'Shopify controller werkt!'
+
     @http.route('/shopify/callback', type='http', auth='public', website=False)
     def shopify_callback(self, **kwargs):
         """Verwerkt de OAuth callback van Shopify."""
@@ -17,7 +21,6 @@ class ShopifyOAuthController(http.Controller):
         if not code or not shop:
             return request.redirect('/web#action=shopify_connector.action_shopify_config&error=missing_params')
 
-        # Zoek de config op basis van shop naam
         shop_name = shop.replace('.myshopify.com', '')
         config = request.env['shopify.config'].sudo().search([
             ('shop_name', '=', shop_name)
@@ -28,7 +31,6 @@ class ShopifyOAuthController(http.Controller):
                 'shop_name': shop_name,
             })
 
-        # Haal access token op
         success = config.sudo()._exchange_code_for_token(code, shop)
 
         if success:
