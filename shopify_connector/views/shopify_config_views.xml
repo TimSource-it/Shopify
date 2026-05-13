@@ -6,10 +6,15 @@
         <field name="arch" type="xml">
             <form>
                 <header>
+                    <button name="action_start_oauth"
+                            string="Verbind met Shopify"
+                            type="object"
+                            class="btn-primary"
+                            invisible="state == 'connected'"/>
                     <button name="action_test_connection"
                             string="Test verbinding"
                             type="object"
-                            class="btn-primary"/>
+                            invisible="state != 'connected'"/>
                     <field name="state" widget="statusbar"
                            statusbar_visible="draft,connected"/>
                 </header>
@@ -17,8 +22,11 @@
                     <group string="Winkelinstellingen">
                         <field name="shop_name"/>
                         <field name="shop_url"/>
+                    </group>
+                    <group string="OAuth Inloggegevens">
+                        <field name="client_id"/>
+                        <field name="client_secret" password="True"/>
                         <field name="access_token" password="True"/>
-                        <field name="active"/>
                     </group>
                     <group string="Synchronisatie">
                         <field name="sync_products"/>
