@@ -14,9 +14,9 @@
     ],
     'data': [
         'views/shopify_config_views.xml',
+        'security/ir.model.access.csv',
         'data/shopify_cron.xml',
     ],
-    'post_init_hook': 'post_init_hook',
     'installable': True,
     'application': True,
     'auto_install': False,
