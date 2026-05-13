@@ -7,7 +7,7 @@ _logger = logging.getLogger(__name__)
 
 class ShopifyOAuthController(http.Controller):
 
-    @http.route('/shopify/callback', type='http', auth='user', website=False)
+    @http.route('/shopify/callback', type='http', auth='public', website=False)
     def shopify_callback(self, **kwargs):
         """Verwerkt de OAuth callback van Shopify."""
         code = kwargs.get('code')
@@ -24,7 +24,6 @@ class ShopifyOAuthController(http.Controller):
         ], limit=1)
 
         if not config:
-            # Maak nieuwe config aan
             config = request.env['shopify.config'].sudo().create({
                 'shop_name': shop_name,
             })
@@ -33,6 +32,6 @@ class ShopifyOAuthController(http.Controller):
         success = config.sudo()._exchange_code_for_token(code, shop)
 
         if success:
-            return request.redirect(f'/web#action=shopify_connector.action_shopify_config&success=1')
+            return request.redirect('/web#action=shopify_connector.action_shopify_config&success=1')
         else:
-            return request.redirect(f'/web#action=shopify_connector.action_shopify_config&error=token_exchange_failed')
+            return request.redirect('/web#action=shopify_connector.action_shopify_config&error=token_exchange_failed')
