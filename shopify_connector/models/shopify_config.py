@@ -71,7 +71,7 @@ class ShopifyConfig(models.Model):
         """Test de verbinding met de Shopify winkel."""
         self.ensure_one()
         try:
-            url = f"{self.shop_url}/admin/api/2024-10/shop.json"
+            url = f"{self.shop_url}/admin/api/2026-04/shop.json"
             response = requests.get(url, headers=self._get_headers(), timeout=10)
             if response.status_code == 200:
                 shop_data = response.json().get('shop', {})
