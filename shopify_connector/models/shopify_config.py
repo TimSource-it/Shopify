@@ -66,14 +66,8 @@ class ShopifyConfig(models.Model):
     def _get_base_url(self):
         return self.env['ir.config_parameter'].sudo().get_param('web.base.url')
 
-    def action_start_oauth(self):
-        """Start de Authorization Code OAuth flow."""
-        self.ensure_one()
-        if not self.client_id:
-            raise UserError("Vul eerst de Client ID in uit het Shopify Dev Dashboard.")
-        if not self.shop_name:
-            raise UserError("Vul eerst de winkelnaam in.")
-
+    def _build_oauth_url(self, shop):
+        """Bouwt de OAuth autorisatie URL voor Shopify."""
         base_url = self._get_base_url()
         redirect_uri = f"{base_url}/shopify/callback"
         scopes = ','.join([
@@ -88,14 +82,24 @@ class ShopifyConfig(models.Model):
             'read_discounts', 'write_discounts',
             'read_locations',
         ])
-
-        oauth_url = (
-            f"https://{self.shop_name}.myshopify.com/admin/oauth/authorize"
+        return (
+            f"https://{shop}/admin/oauth/authorize"
             f"?client_id={self.client_id}"
             f"&scope={scopes}"
             f"&redirect_uri={redirect_uri}"
             f"&state={self.id}"
         )
+
+    def action_start_oauth(self):
+        """Start de OAuth flow vanuit Odoo."""
+        self.ensure_one()
+        if not self.client_id:
+            raise UserError("Vul eerst de Client ID in uit het Shopify Dev Dashboard.")
+        if not self.shop_name:
+            raise UserError("Vul eerst de winkelnaam in.")
+
+        shop = f"{self.shop_name}.myshopify.com"
+        oauth_url = self._build_oauth_url(shop)
 
         return {
             'type': 'ir.actions.act_url',
@@ -114,7 +118,7 @@ class ShopifyConfig(models.Model):
                 'code': code,
             }
             response = requests.post(url, json=data, timeout=10)
-            _logger.info(f"Token exchange response: {response.status_code} - {response.text[:200]}")
+            _logger.info(f"Token exchange: {response.status_code} - {response.text[:200]}")
             if response.status_code == 200:
                 token_data = response.json()
                 self.write({
@@ -124,9 +128,10 @@ class ShopifyConfig(models.Model):
                 return True
             else:
                 self.state = 'error'
+                _logger.error(f"Token exchange mislukt: {response.text}")
                 return False
         except Exception as e:
-            _logger.error(f"Token exchange mislukt: {e}")
+            _logger.error(f"Token exchange fout: {e}")
             self.state = 'error'
             return False
 
