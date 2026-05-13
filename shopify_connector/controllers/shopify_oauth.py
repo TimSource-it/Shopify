@@ -11,7 +11,7 @@ class ShopifyOAuthController(http.Controller):
     def shopify_test(self, **kwargs):
         return 'Shopify controller werkt!'
 
-    @http.route('/shopify/callback', type='http', auth='public', website=False)
+    @http.route('/shopify/callback', type='http', auth='none', csrf=False)
     def shopify_callback(self, **kwargs):
         """Verwerkt de OAuth callback van Shopify."""
         code = kwargs.get('code')
@@ -22,16 +22,20 @@ class ShopifyOAuthController(http.Controller):
             return request.redirect('/web#action=shopify_connector.action_shopify_config&error=missing_params')
 
         shop_name = shop.replace('.myshopify.com', '')
-        config = request.env['shopify.config'].sudo().search([
+        
+        # Gebruik sudo voor database toegang zonder login
+        env = request.env(user=1)
+        
+        config = env['shopify.config'].search([
             ('shop_name', '=', shop_name)
         ], limit=1)
 
         if not config:
-            config = request.env['shopify.config'].sudo().create({
+            config = env['shopify.config'].create({
                 'shop_name': shop_name,
             })
 
-        success = config.sudo()._exchange_code_for_token(code, shop)
+        success = config._exchange_code_for_token(code, shop)
 
         if success:
             return request.redirect('/web#action=shopify_connector.action_shopify_config&success=1')
