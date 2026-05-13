@@ -32,10 +32,7 @@ class ShopifyConfig(models.Model):
         string='Client Secret',
         help='Shopify App Client Secret uit het Dev Dashboard'
     )
-    active = fields.Boolean(
-        string='Actief',
-        default=True,
-    )
+    active = fields.Boolean(string='Actief', default=True)
     state = fields.Selection([
         ('draft', 'Niet verbonden'),
         ('connected', 'Verbonden'),
@@ -46,10 +43,7 @@ class ShopifyConfig(models.Model):
     sync_orders = fields.Boolean(string='Bestellingen importeren', default=True)
     sync_inventory = fields.Boolean(string='Voorraad synchroniseren', default=True)
     sync_customers = fields.Boolean(string='Klanten synchroniseren', default=True)
-    allow_backorder = fields.Boolean(
-        string='Bestellen bij 0 voorraad',
-        default=False,
-    )
+    allow_backorder = fields.Boolean(string='Bestellen bij 0 voorraad', default=False)
 
     last_order_sync = fields.Datetime(string='Laatste bestelling sync')
     last_product_sync = fields.Datetime(string='Laatste product sync')
@@ -69,41 +63,72 @@ class ShopifyConfig(models.Model):
             'Content-Type': 'application/json',
         }
 
-    def action_get_token(self):
-        """Haal access token op via Client Credentials flow."""
+    def _get_base_url(self):
+        return self.env['ir.config_parameter'].sudo().get_param('web.base.url')
+
+    def action_start_oauth(self):
+        """Start de Authorization Code OAuth flow."""
         self.ensure_one()
-        if not self.client_id or not self.client_secret:
-            raise UserError("Vul eerst de Client ID en Client Secret in.")
+        if not self.client_id:
+            raise UserError("Vul eerst de Client ID in uit het Shopify Dev Dashboard.")
+        if not self.shop_name:
+            raise UserError("Vul eerst de winkelnaam in.")
+
+        base_url = self._get_base_url()
+        redirect_uri = f"{base_url}/shopify/callback"
+        scopes = ','.join([
+            'read_products', 'write_products',
+            'read_orders', 'write_orders',
+            'read_inventory', 'write_inventory',
+            'read_customers', 'write_customers',
+            'read_fulfillments', 'write_fulfillments',
+            'read_shipping', 'write_shipping',
+            'read_returns', 'write_returns',
+            'read_price_rules', 'write_price_rules',
+            'read_discounts', 'write_discounts',
+            'read_locations',
+        ])
+
+        oauth_url = (
+            f"https://{self.shop_name}.myshopify.com/admin/oauth/authorize"
+            f"?client_id={self.client_id}"
+            f"&scope={scopes}"
+            f"&redirect_uri={redirect_uri}"
+            f"&state={self.id}"
+        )
+
+        return {
+            'type': 'ir.actions.act_url',
+            'url': oauth_url,
+            'target': 'self',
+        }
+
+    def _exchange_code_for_token(self, code, shop):
+        """Wisselt de OAuth code in voor een permanent access token."""
+        self.ensure_one()
         try:
-            url = f"https://{self.shop_name}.myshopify.com/admin/oauth/access_token"
+            url = f"https://{shop}/admin/oauth/access_token"
             data = {
                 'client_id': self.client_id,
                 'client_secret': self.client_secret,
-                'grant_type': 'client_credentials',
+                'code': code,
             }
             response = requests.post(url, json=data, timeout=10)
+            _logger.info(f"Token exchange response: {response.status_code} - {response.text[:200]}")
             if response.status_code == 200:
                 token_data = response.json()
                 self.write({
                     'access_token': token_data.get('access_token'),
                     'state': 'connected',
                 })
-                return {
-                    'type': 'ir.actions.client',
-                    'tag': 'display_notification',
-                    'params': {
-                        'title': 'Verbinding geslaagd!',
-                        'message': f"Token ontvangen voor {self.shop_name}",
-                        'type': 'success',
-                        'sticky': False,
-                    }
-                }
+                return True
             else:
                 self.state = 'error'
-                raise UserError(f"Token ophalen mislukt: {response.text}")
-        except requests.exceptions.ConnectionError:
+                return False
+        except Exception as e:
+            _logger.error(f"Token exchange mislukt: {e}")
             self.state = 'error'
-            raise UserError("Kan geen verbinding maken met Shopify.")
+            return False
 
     def action_test_connection(self):
         """Test de verbinding met de Shopify winkel."""
