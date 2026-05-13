@@ -1,7 +1,6 @@
 from odoo import models, fields, api
 from odoo.exceptions import UserError
 import requests
-import json
 import logging
 
 _logger = logging.getLogger(__name__)
@@ -43,7 +42,6 @@ class ShopifyConfig(models.Model):
         ('error', 'Fout'),
     ], string='Status', default='draft')
 
-    # Synchronisatie instellingen
     sync_products = fields.Boolean(string='Producten synchroniseren', default=True)
     sync_orders = fields.Boolean(string='Bestellingen importeren', default=True)
     sync_inventory = fields.Boolean(string='Voorraad synchroniseren', default=True)
@@ -53,7 +51,6 @@ class ShopifyConfig(models.Model):
         default=False,
     )
 
-    # Laatste sync tijden
     last_order_sync = fields.Datetime(string='Laatste bestelling sync')
     last_product_sync = fields.Datetime(string='Laatste product sync')
     last_inventory_sync = fields.Datetime(string='Laatste voorraad sync')
@@ -72,43 +69,17 @@ class ShopifyConfig(models.Model):
             'Content-Type': 'application/json',
         }
 
-    def _get_base_url(self):
-        """Geeft de basis URL van de Odoo instantie terug."""
-        return self.env['ir.config_parameter'].sudo().get_param('web.base.url')
-
-    def action_start_oauth(self):
-        """Start de OAuth flow door de gebruiker naar Shopify te sturen."""
+    def action_get_token(self):
+        """Haal access token op via Client Credentials flow."""
         self.ensure_one()
-        if not self.client_id:
-            raise UserError("Vul eerst de Client ID in uit het Shopify Dev Dashboard.")
-
-        base_url = self._get_base_url()
-        redirect_uri = f"{base_url}/shopify/callback"
-        scopes = 'read_products,write_products,read_orders,write_orders,read_inventory,write_inventory,read_customers,write_customers,read_fulfillments,write_fulfillments,read_shipping,write_shipping,read_returns,write_returns,read_price_rules,write_price_rules,read_discounts,write_discounts,read_locations'
-
-        oauth_url = (
-            f"https://{self.shop_name}.myshopify.com/admin/oauth/authorize"
-            f"?client_id={self.client_id}"
-            f"&scope={scopes}"
-            f"&redirect_uri={redirect_uri}"
-            f"&state={self.id}"
-        )
-
-        return {
-            'type': 'ir.actions.act_url',
-            'url': oauth_url,
-            'target': 'self',
-        }
-
-    def _exchange_code_for_token(self, code, shop):
-        """Wisselt de OAuth code in voor een access token."""
-        self.ensure_one()
+        if not self.client_id or not self.client_secret:
+            raise UserError("Vul eerst de Client ID en Client Secret in.")
         try:
-            url = f"https://{shop}/admin/oauth/access_token"
+            url = f"https://{self.shop_name}.myshopify.com/admin/oauth/access_token"
             data = {
                 'client_id': self.client_id,
                 'client_secret': self.client_secret,
-                'code': code,
+                'grant_type': 'client_credentials',
             }
             response = requests.post(url, json=data, timeout=10)
             if response.status_code == 200:
@@ -117,20 +88,28 @@ class ShopifyConfig(models.Model):
                     'access_token': token_data.get('access_token'),
                     'state': 'connected',
                 })
-                return True
+                return {
+                    'type': 'ir.actions.client',
+                    'tag': 'display_notification',
+                    'params': {
+                        'title': 'Verbinding geslaagd!',
+                        'message': f"Token ontvangen voor {self.shop_name}",
+                        'type': 'success',
+                        'sticky': False,
+                    }
+                }
             else:
                 self.state = 'error'
-                return False
-        except Exception as e:
-            _logger.error(f"Token exchange mislukt: {e}")
+                raise UserError(f"Token ophalen mislukt: {response.text}")
+        except requests.exceptions.ConnectionError:
             self.state = 'error'
-            return False
+            raise UserError("Kan geen verbinding maken met Shopify.")
 
     def action_test_connection(self):
         """Test de verbinding met de Shopify winkel."""
         self.ensure_one()
         if not self.access_token:
-            raise UserError("Geen access token gevonden. Start eerst de OAuth verbinding.")
+            raise UserError("Geen access token. Klik eerst op Verbind met Shopify.")
         try:
             url = f"{self.shop_url}/admin/api/2026-04/shop.json"
             response = requests.get(url, headers=self._get_headers(), timeout=10)
