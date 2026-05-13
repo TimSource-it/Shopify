@@ -24,7 +24,14 @@ class ShopifyConfig(models.Model):
     )
     access_token = fields.Char(
         string='Admin API Access Token',
-        required=True,
+    )
+    client_id = fields.Char(
+        string='Client ID',
+        help='Shopify App Client ID uit het Dev Dashboard'
+    )
+    client_secret = fields.Char(
+        string='Client Secret',
+        help='Shopify App Client Secret uit het Dev Dashboard'
     )
     active = fields.Boolean(
         string='Actief',
@@ -44,7 +51,6 @@ class ShopifyConfig(models.Model):
     allow_backorder = fields.Boolean(
         string='Bestellen bij 0 voorraad',
         default=False,
-        help='Sta toe dat klanten bestellen als er geen voorraad is'
     )
 
     # Laatste sync tijden
@@ -61,15 +67,70 @@ class ShopifyConfig(models.Model):
                 rec.shop_url = False
 
     def _get_headers(self):
-        """Geeft de benodigde headers terug voor Shopify API calls."""
         return {
             'X-Shopify-Access-Token': self.access_token,
             'Content-Type': 'application/json',
         }
 
+    def _get_base_url(self):
+        """Geeft de basis URL van de Odoo instantie terug."""
+        return self.env['ir.config_parameter'].sudo().get_param('web.base.url')
+
+    def action_start_oauth(self):
+        """Start de OAuth flow door de gebruiker naar Shopify te sturen."""
+        self.ensure_one()
+        if not self.client_id:
+            raise UserError("Vul eerst de Client ID in uit het Shopify Dev Dashboard.")
+
+        base_url = self._get_base_url()
+        redirect_uri = f"{base_url}/shopify/callback"
+        scopes = 'read_products,write_products,read_orders,write_orders,read_inventory,write_inventory,read_customers,write_customers,read_fulfillments,write_fulfillments,read_shipping,write_shipping,read_returns,write_returns,read_price_rules,write_price_rules,read_discounts,write_discounts,read_locations'
+
+        oauth_url = (
+            f"https://{self.shop_name}.myshopify.com/admin/oauth/authorize"
+            f"?client_id={self.client_id}"
+            f"&scope={scopes}"
+            f"&redirect_uri={redirect_uri}"
+            f"&state={self.id}"
+        )
+
+        return {
+            'type': 'ir.actions.act_url',
+            'url': oauth_url,
+            'target': 'self',
+        }
+
+    def _exchange_code_for_token(self, code, shop):
+        """Wisselt de OAuth code in voor een access token."""
+        self.ensure_one()
+        try:
+            url = f"https://{shop}/admin/oauth/access_token"
+            data = {
+                'client_id': self.client_id,
+                'client_secret': self.client_secret,
+                'code': code,
+            }
+            response = requests.post(url, json=data, timeout=10)
+            if response.status_code == 200:
+                token_data = response.json()
+                self.write({
+                    'access_token': token_data.get('access_token'),
+                    'state': 'connected',
+                })
+                return True
+            else:
+                self.state = 'error'
+                return False
+        except Exception as e:
+            _logger.error(f"Token exchange mislukt: {e}")
+            self.state = 'error'
+            return False
+
     def action_test_connection(self):
         """Test de verbinding met de Shopify winkel."""
         self.ensure_one()
+        if not self.access_token:
+            raise UserError("Geen access token gevonden. Start eerst de OAuth verbinding.")
         try:
             url = f"{self.shop_url}/admin/api/2026-04/shop.json"
             response = requests.get(url, headers=self._get_headers(), timeout=10)
@@ -88,13 +149,10 @@ class ShopifyConfig(models.Model):
                 }
             else:
                 self.state = 'error'
-                raise UserError(
-                    f"Verbinding mislukt (status {response.status_code}). "
-                    f"Controleer je access token en winkelnaam."
-                )
+                raise UserError(f"Verbinding mislukt (status {response.status_code}).")
         except requests.exceptions.ConnectionError:
             self.state = 'error'
-            raise UserError("Kan geen verbinding maken. Controleer je internetverbinding en winkelnaam.")
+            raise UserError("Kan geen verbinding maken.")
         except requests.exceptions.Timeout:
             self.state = 'error'
-            raise UserError("Verbinding time-out. Probeer opnieuw.")
+            raise UserError("Verbinding time-out.")
