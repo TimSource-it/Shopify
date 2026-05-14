@@ -11,7 +11,7 @@ class ShopifyOAuthController(http.Controller):
     def shopify_test(self, **kwargs):
         return 'Shopify controller werkt!'
 
-    @http.route('/shopify/install', type='http', auth='public', csrf=False)
+    @http.route('/shopify/install', type='http', auth='none', csrf=False)
     def shopify_install(self, **kwargs):
         """Ontvangt het verzoek van Shopify na installatie en start OAuth flow."""
         shop = kwargs.get('shop')
@@ -20,18 +20,23 @@ class ShopifyOAuthController(http.Controller):
 
         shop_name = shop.replace('.myshopify.com', '')
 
-        config = request.env['shopify.config'].sudo().search([
-            ('shop_name', '=', shop_name)
-        ], limit=1)
+        try:
+            env = http.request.env(user=1)
+            config = env['shopify.config'].search([
+                ('shop_name', '=', shop_name)
+            ], limit=1)
 
-        if not config:
-            _logger.warning(f"Geen configuratie gevonden voor winkel: {shop_name}")
+            if not config:
+                _logger.warning(f"Geen configuratie gevonden voor winkel: {shop_name}")
+                return request.redirect('/web')
+
+            oauth_url = config._build_oauth_url(shop)
+            return request.redirect(oauth_url)
+        except Exception as e:
+            _logger.error(f"Install fout: {e}")
             return request.redirect('/web')
 
-        oauth_url = config.sudo()._build_oauth_url(shop)
-        return request.redirect(oauth_url)
-
-    @http.route('/shopify/callback', type='http', auth='public', csrf=False)
+    @http.route('/shopify/callback', type='http', auth='none', csrf=False)
     def shopify_callback(self, **kwargs):
         """Verwerkt de OAuth callback van Shopify."""
         code = kwargs.get('code')
@@ -45,24 +50,30 @@ class ShopifyOAuthController(http.Controller):
 
         shop_name = shop.replace('.myshopify.com', '')
 
-        config = request.env['shopify.config'].sudo().search([
-            ('shop_name', '=', shop_name)
-        ], limit=1)
+        try:
+            env = http.request.env(user=1)
 
-        if not config and state:
-            try:
-                config = request.env['shopify.config'].sudo().browse(int(state))
-            except Exception:
-                pass
+            config = env['shopify.config'].search([
+                ('shop_name', '=', shop_name)
+            ], limit=1)
 
-        if not config:
-            config = request.env['shopify.config'].sudo().create({
-                'shop_name': shop_name,
-            })
+            if not config and state:
+                try:
+                    config = env['shopify.config'].browse(int(state))
+                except Exception:
+                    pass
 
-        success = config.sudo()._exchange_code_for_token(code, shop)
+            if not config:
+                config = env['shopify.config'].create({
+                    'shop_name': shop_name,
+                })
 
-        if success:
-            return request.redirect('/web#action=shopify_connector.action_shopify_config&success=1')
-        else:
-            return request.redirect('/web#action=shopify_connector.action_shopify_config&error=token_exchange_failed')
+            success = config._exchange_code_for_token(code, shop)
+
+            if success:
+                return request.redirect('/web#action=shopify_connector.action_shopify_config&success=1')
+            else:
+                return request.redirect('/web#action=shopify_connector.action_shopify_config&error=token_exchange_failed')
+        except Exception as e:
+            _logger.error(f"Callback fout: {e}")
+            return request.redirect('/web#action=shopify_connector.action_shopify_config&error=exception')
