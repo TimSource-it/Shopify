@@ -11,17 +11,16 @@ class ShopifyOAuthController(http.Controller):
     def shopify_test(self, **kwargs):
         return 'Shopify controller werkt!'
 
-    @http.route('/shopify/install', type='http', auth='none', csrf=False)
+    @http.route('/shopify/install', type='http', auth='public', csrf=False)
     def shopify_install(self, **kwargs):
         """Ontvangt het verzoek van Shopify na installatie en start OAuth flow."""
         shop = kwargs.get('shop')
         if not shop:
-            return 'Geen winkel opgegeven.'
+            return request.make_response('Geen winkel opgegeven.')
 
         shop_name = shop.replace('.myshopify.com', '')
-        env = request.env(user=1)
 
-        config = env['shopify.config'].search([
+        config = request.env['shopify.config'].sudo().search([
             ('shop_name', '=', shop_name)
         ], limit=1)
 
@@ -29,10 +28,10 @@ class ShopifyOAuthController(http.Controller):
             _logger.warning(f"Geen configuratie gevonden voor winkel: {shop_name}")
             return request.redirect('/web')
 
-        oauth_url = config._build_oauth_url(shop)
+        oauth_url = config.sudo()._build_oauth_url(shop)
         return request.redirect(oauth_url)
 
-    @http.route('/shopify/callback', type='http', auth='none', csrf=False)
+    @http.route('/shopify/callback', type='http', auth='public', csrf=False)
     def shopify_callback(self, **kwargs):
         """Verwerkt de OAuth callback van Shopify."""
         code = kwargs.get('code')
@@ -45,24 +44,23 @@ class ShopifyOAuthController(http.Controller):
             return request.redirect('/web#action=shopify_connector.action_shopify_config&error=missing_params')
 
         shop_name = shop.replace('.myshopify.com', '')
-        env = request.env(user=1)
 
-        config = env['shopify.config'].search([
+        config = request.env['shopify.config'].sudo().search([
             ('shop_name', '=', shop_name)
         ], limit=1)
 
         if not config and state:
             try:
-                config = env['shopify.config'].browse(int(state))
+                config = request.env['shopify.config'].sudo().browse(int(state))
             except Exception:
                 pass
 
         if not config:
-            config = env['shopify.config'].create({
+            config = request.env['shopify.config'].sudo().create({
                 'shop_name': shop_name,
             })
 
-        success = config._exchange_code_for_token(code, shop)
+        success = config.sudo()._exchange_code_for_token(code, shop)
 
         if success:
             return request.redirect('/web#action=shopify_connector.action_shopify_config&success=1')
