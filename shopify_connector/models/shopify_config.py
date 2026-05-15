@@ -1,167 +1,82 @@
-from odoo import models, fields, api
-from odoo.exceptions import UserError
-import requests
+from odoo import http
+from odoo.http import request, Response
 import logging
 
 _logger = logging.getLogger(__name__)
 
 
-class ShopifyConfig(models.Model):
-    _name = 'shopify.config'
-    _description = 'Shopify Verbindingsinstellingen'
-    _rec_name = 'shop_name'
+class ShopifyOAuthController(http.Controller):
 
-    shop_name = fields.Char(
-        string='Winkelnaam',
-        required=True,
-        help='Bijv: mijn-winkel (zonder .myshopify.com)'
-    )
-    shop_url = fields.Char(
-        string='Winkel URL',
-        compute='_compute_shop_url',
-        store=True,
-    )
-    access_token = fields.Char(
-        string='Admin API Access Token',
-    )
-    client_id = fields.Char(
-        string='Client ID',
-        help='Shopify App Client ID uit het Dev Dashboard'
-    )
-    client_secret = fields.Char(
-        string='Client Secret',
-        help='Shopify App Client Secret uit het Dev Dashboard'
-    )
-    active = fields.Boolean(string='Actief', default=True)
-    state = fields.Selection([
-        ('draft', 'Niet verbonden'),
-        ('connected', 'Verbonden'),
-        ('error', 'Fout'),
-    ], string='Status', default='draft')
+    @http.route('/shopify/test', type='http', auth='none')
+    def shopify_test(self, **kwargs):
+        return 'Shopify controller werkt!'
 
-    sync_products = fields.Boolean(string='Producten synchroniseren', default=True)
-    sync_orders = fields.Boolean(string='Bestellingen importeren', default=True)
-    sync_inventory = fields.Boolean(string='Voorraad synchroniseren', default=True)
-    sync_customers = fields.Boolean(string='Klanten synchroniseren', default=True)
-    allow_backorder = fields.Boolean(string='Bestellen bij 0 voorraad', default=False)
+    @http.route('/shopify/install', type='http', auth='none', csrf=False)
+    def shopify_install(self, **kwargs):
+        """Ontvangt het verzoek van Shopify na installatie en start OAuth flow."""
+        shop = kwargs.get('shop')
+        if not shop:
+            return request.make_response('Geen winkel opgegeven.')
 
-    last_order_sync = fields.Datetime(string='Laatste bestelling sync')
-    last_product_sync = fields.Datetime(string='Laatste product sync')
-    last_inventory_sync = fields.Datetime(string='Laatste voorraad sync')
+        shop_name = shop.replace('.myshopify.com', '')
 
-    @api.depends('shop_name')
-    def _compute_shop_url(self):
-        for rec in self:
-            if rec.shop_name:
-                rec.shop_url = f"https://{rec.shop_name}.myshopify.com"
-            else:
-                rec.shop_url = False
-
-    def _get_headers(self):
-        return {
-            'X-Shopify-Access-Token': self.access_token,
-            'Content-Type': 'application/json',
-        }
-
-    def _get_base_url(self):
-        return self.env['ir.config_parameter'].sudo().get_param('web.base.url')
-
-    def _build_oauth_url(self, shop):
-        """Bouwt de OAuth autorisatie URL voor Shopify."""
-        base_url = self._get_base_url()
-        redirect_uri = f"{base_url}/shopify/callback"
-        scopes = ','.join([
-            'read_products', 'write_products',
-            'read_orders', 'write_orders',
-            'read_inventory', 'write_inventory',
-            'read_customers', 'write_customers',
-            'read_fulfillments', 'write_fulfillments',
-            'read_shipping', 'write_shipping',
-            'read_returns', 'write_returns',
-            'read_price_rules', 'write_price_rules',
-            'read_discounts', 'write_discounts',
-            'read_locations',
-        ])
-        return (
-            f"https://{shop}/admin/oauth/authorize"
-            f"?client_id={self.client_id}"
-            f"&scope={scopes}"
-            f"&redirect_uri={redirect_uri}"
-            f"&state={self.id}"
-        )
-
-    def action_start_oauth(self):
-        """Start de OAuth flow vanuit Odoo."""
-        self.ensure_one()
-        if not self.client_id:
-            raise UserError("Vul eerst de Client ID in uit het Shopify Dev Dashboard.")
-        if not self.shop_name:
-            raise UserError("Vul eerst de winkelnaam in.")
-
-        shop = f"{self.shop_name}.myshopify.com"
-        oauth_url = self._build_oauth_url(shop)
-
-        return {
-            'type': 'ir.actions.act_url',
-            'url': oauth_url,
-            'target': 'self',
-        }
-
-    def _exchange_code_for_token(self, code, shop):
-        """Wisselt de OAuth code in voor een permanent access token."""
-        self.ensure_one()
         try:
-            url = f"https://{shop}/admin/oauth/access_token"
-            data = {
-                'client_id': self.client_id,
-                'client_secret': self.client_secret,
-                'code': code,
-            }
-            response = requests.post(url, json=data, timeout=10)
-            _logger.info(f"Token exchange: {response.status_code} - {response.text[:200]}")
-            if response.status_code == 200:
-                token_data = response.json()
-                self.write({
-                    'access_token': token_data.get('access_token'),
-                    'state': 'connected',
-                })
-                return True
-            else:
-                self.state = 'error'
-                _logger.error(f"Token exchange mislukt: {response.text}")
-                return False
+            env = http.request.env(user=1)
+            config = env['shopify.config'].search([
+                ('shop_name', '=', shop_name)
+            ], limit=1)
+
+            if not config:
+                _logger.warning(f"Geen configuratie gevonden voor winkel: {shop_name}")
+                return Response(status=302, headers=[('Location', '/web')])
+
+            oauth_url = config._build_oauth_url(shop)
+            _logger.info(f"Redirecting naar OAuth URL: {oauth_url}")
+            return Response(status=302, headers=[('Location', oauth_url)])
+
         except Exception as e:
-            _logger.error(f"Token exchange fout: {e}")
-            self.state = 'error'
-            return False
+            _logger.error(f"Install fout: {e}")
+            return Response(status=302, headers=[('Location', '/web')])
 
-    def action_test_connection(self):
-        """Test de verbinding met de Shopify winkel."""
-        self.ensure_one()
-        if not self.access_token:
-            raise UserError("Geen access token. Klik eerst op Verbind met Shopify.")
+    @http.route('/shopify/callback', type='http', auth='none', csrf=False)
+    def shopify_callback(self, **kwargs):
+        """Verwerkt de OAuth callback van Shopify."""
+        code = kwargs.get('code')
+        shop = kwargs.get('shop')
+        state = kwargs.get('state')
+
+        _logger.info(f"Shopify callback: shop={shop}, code={code[:10] if code else None}")
+
+        if not code or not shop:
+            return Response(status=302, headers=[('Location', '/web#action=shopify_connector.action_shopify_config&error=missing_params')])
+
+        shop_name = shop.replace('.myshopify.com', '')
+
         try:
-            url = f"{self.shop_url}/admin/api/2026-04/shop.json"
-            response = requests.get(url, headers=self._get_headers(), timeout=10)
-            if response.status_code == 200:
-                shop_data = response.json().get('shop', {})
-                self.state = 'connected'
-                return {
-                    'type': 'ir.actions.client',
-                    'tag': 'display_notification',
-                    'params': {
-                        'title': 'Verbinding geslaagd!',
-                        'message': f"Verbonden met: {shop_data.get('name', self.shop_name)}",
-                        'type': 'success',
-                        'sticky': False,
-                    }
-                }
+            env = http.request.env(user=1)
+
+            config = env['shopify.config'].search([
+                ('shop_name', '=', shop_name)
+            ], limit=1)
+
+            if not config and state:
+                try:
+                    config = env['shopify.config'].browse(int(state))
+                except Exception:
+                    pass
+
+            if not config:
+                config = env['shopify.config'].create({
+                    'shop_name': shop_name,
+                })
+
+            success = config._exchange_code_for_token(code, shop)
+
+            if success:
+                return Response(status=302, headers=[('Location', '/web#action=shopify_connector.action_shopify_config&success=1')])
             else:
-                self.state = 'error'
-                raise UserError(f"Verbinding mislukt (status {response.status_code}).")
-        except requests.exceptions.ConnectionError:
-            self.state = 'error'
-            raise UserError("Kan geen verbinding maken.")
-        except requests.exceptions.Timeout:
-            self.state = 'error'
-            raise UserError("Verbinding time-out.")
+                return Response(status=302, headers=[('Location', '/web#action=shopify_connector.action_shopify_config&error=token_exchange_failed')])
+
+        except Exception as e:
+            _logger.error(f"Callback fout: {e}")
+            return Response(status=302, headers=[('Location', '/web#action=shopify_connector.action_shopify_config&error=exception')])
