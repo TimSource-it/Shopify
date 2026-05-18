@@ -102,14 +102,19 @@ class ShopifyConfig(models.Model):
         self.ensure_one()
         try:
             url = f"https://{shop}/admin/oauth/access_token"
-            data = {
-                'client_id': self.client_id,
-                'client_secret': self.client_secret,
-                'code': code,
-            }
-            response = requests.post(url, json=data, timeout=10)
+            response = requests.post(
+                url,
+                data={
+                    'client_id': self.client_id,
+                    'client_secret': self.client_secret,
+                    'code': code,
+                },
+                timeout=10
+            )
+            _logger.info(f"Token exchange response: {response.status_code} - {response.text}")
             if response.status_code == 200:
                 token_data = response.json()
+                _logger.info(f"Token data keys: {list(token_data.keys())}")
                 self.write({
                     'access_token': token_data.get('access_token'),
                     'state': 'connected',
@@ -129,7 +134,7 @@ class ShopifyConfig(models.Model):
         if not self.access_token:
             raise UserError("Geen access token. Klik eerst op Verbind met Shopify.")
         try:
-            url = f"{self.shop_url}/admin/api/2026-04/shop.json"
+            url = f"{self.shop_url}/admin/api/2025-01/shop.json"
             response = requests.get(url, headers=self._get_headers(), timeout=10)
             if response.status_code == 200:
                 shop_data = response.json().get('shop', {})
