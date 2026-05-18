@@ -25,6 +25,8 @@ class ShopifyConfig(models.Model):
     access_token = fields.Char(string='Admin API Access Token')
     client_id = fields.Char(string='Client ID')
     client_secret = fields.Char(string='Client Secret')
+    refresh_token = fields.Char(string='Refresh Token')
+    access_token_expires_at = fields.Datetime(string='Token verloopt op')
     active = fields.Boolean(string='Actief', default=True)
     state = fields.Selection([
         ('draft', 'Niet verbonden'),
@@ -108,6 +110,7 @@ class ShopifyConfig(models.Model):
                     'client_id': self.client_id,
                     'client_secret': self.client_secret,
                     'code': code,
+                    'expiring': '1',
                 },
                 timeout=10
             )
@@ -115,10 +118,16 @@ class ShopifyConfig(models.Model):
             if response.status_code == 200:
                 token_data = response.json()
                 _logger.info(f"Token data keys: {list(token_data.keys())}")
-                self.write({
+                vals = {
                     'access_token': token_data.get('access_token'),
                     'state': 'connected',
-                })
+                }
+                if token_data.get('refresh_token'):
+                    vals['refresh_token'] = token_data['refresh_token']
+                if token_data.get('expires_in'):
+                    from datetime import datetime, timedelta
+                    vals['access_token_expires_at'] = datetime.utcnow() + timedelta(seconds=token_data['expires_in'])
+                self.write(vals)
                 return True
             else:
                 self.state = 'error'
@@ -129,13 +138,62 @@ class ShopifyConfig(models.Model):
             self.state = 'error'
             return False
 
+    def _refresh_access_token(self):
+        """Vernieuwt het access token met het refresh token."""
+        self.ensure_one()
+        if not self.refresh_token:
+            raise UserError("Geen refresh token beschikbaar.")
+        try:
+            url = f"{self.shop_url}/admin/oauth/access_token"
+            response = requests.post(
+                url,
+                data={
+                    'client_id': self.client_id,
+                    'client_secret': self.client_secret,
+                    'grant_type': 'refresh_token',
+                    'refresh_token': self.refresh_token,
+                },
+                timeout=10
+            )
+            if response.status_code == 200:
+                token_data = response.json()
+                vals = {
+                    'access_token': token_data.get('access_token'),
+                }
+                if token_data.get('refresh_token'):
+                    vals['refresh_token'] = token_data['refresh_token']
+                if token_data.get('expires_in'):
+                    from datetime import datetime, timedelta
+                    vals['access_token_expires_at'] = datetime.utcnow() + timedelta(seconds=token_data['expires_in'])
+                self.write(vals)
+                return True
+            else:
+                _logger.error(f"Token refresh mislukt: {response.text}")
+                return False
+        except Exception as e:
+            _logger.error(f"Token refresh fout: {e}")
+            return False
+
+    def _get_valid_token(self):
+        """Geeft een geldig access token terug, vernieuwt indien nodig."""
+        from datetime import datetime, timedelta
+        if self.access_token_expires_at:
+            if datetime.utcnow() >= self.access_token_expires_at - timedelta(minutes=5):
+                self._refresh_access_token()
+        return self.access_token
+
     def action_test_connection(self):
         self.ensure_one()
         if not self.access_token:
             raise UserError("Geen access token. Klik eerst op Verbind met Shopify.")
         try:
+            token = self._get_valid_token()
             url = f"{self.shop_url}/admin/api/2025-01/shop.json"
-            response = requests.get(url, headers=self._get_headers(), timeout=10)
+            headers = {
+                'X-Shopify-Access-Token': token,
+                'Content-Type': 'application/json',
+            }
+            response = requests.get(url, headers=headers, timeout=10)
             if response.status_code == 200:
                 shop_data = response.json().get('shop', {})
                 self.state = 'connected'
