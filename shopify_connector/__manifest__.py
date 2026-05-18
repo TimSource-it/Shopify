@@ -13,10 +13,7 @@
         'account',
         'web',
     ],
-    'data': [
-        'views/shopify_config_views.xml',
-        'data/shopify_cron.xml',
-    ],
+    'data': [],
     'post_init_hook': 'post_init_hook',
     'installable': True,
     'application': True,
