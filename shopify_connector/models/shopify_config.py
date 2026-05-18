@@ -1,6 +1,7 @@
 from odoo import models, fields, api
 from odoo.exceptions import UserError
 import requests
+import secrets
 import logging
 
 _logger = logging.getLogger(__name__)
@@ -58,7 +59,7 @@ class ShopifyConfig(models.Model):
     def _get_base_url(self):
         return self.env['ir.config_parameter'].sudo().get_param('web.base.url')
 
-    def _build_oauth_url(self, shop):
+    def _build_oauth_url(self, shop, state=None):
         base_url = self._get_base_url()
         redirect_uri = f"{base_url}/shopify/callback"
         scopes = ','.join([
@@ -73,12 +74,13 @@ class ShopifyConfig(models.Model):
             'read_discounts', 'write_discounts',
             'read_locations',
         ])
+        state_param = state or secrets.token_hex(32)
         return (
             f"https://{shop}/admin/oauth/authorize"
             f"?client_id={self.client_id}"
             f"&scope={scopes}"
             f"&redirect_uri={redirect_uri}"
-            f"&state={self.id}"
+            f"&state={state_param}"
         )
 
     def action_start_oauth(self):
@@ -88,7 +90,8 @@ class ShopifyConfig(models.Model):
         if not self.shop_name:
             raise UserError("Vul eerst de winkelnaam in.")
         shop = f"{self.shop_name}.myshopify.com"
-        oauth_url = self._build_oauth_url(shop)
+        state = self.env['shopify.oauth.state'].create_state(self.shop_name)
+        oauth_url = self._build_oauth_url(shop, state)
         return {
             'type': 'ir.actions.act_url',
             'url': oauth_url,
@@ -114,6 +117,7 @@ class ShopifyConfig(models.Model):
                 return True
             else:
                 self.state = 'error'
+                _logger.error(f"Token exchange mislukt: {response.text}")
                 return False
         except Exception as e:
             _logger.error(f"Token exchange fout: {e}")
