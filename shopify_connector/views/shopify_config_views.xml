@@ -9,8 +9,7 @@
                     <button name="action_start_oauth"
                             string="Verbind met Shopify"
                             type="object"
-                            class="btn-primary"
-                            invisible="state == 'connected'"/>
+                            class="btn-primary"/>
                     <button name="action_test_connection"
                             string="Test verbinding"
                             type="object"/>
