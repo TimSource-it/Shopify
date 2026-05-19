@@ -23,7 +23,7 @@
                             string="Sync naar Shopify"
                             type="object"
                             class="btn-primary"
-                            invisible="not shopify_published"/>
+                            invisible="not shopify_published and not shopify_product_id"/>
                 </page>
             </notebook>
         </field>
