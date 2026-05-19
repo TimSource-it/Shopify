@@ -40,7 +40,29 @@ class ProductTemplate(models.Model):
                 }
             }
         else:
-            raise UserError(f"Synchronisatie mislukt. Controleer de sync status voor details.")
+            raise UserError("Synchronisatie mislukt. Controleer de sync status voor details.")
+
+    def action_bulk_sync_to_shopify(self):
+        """Synchroniseer meerdere producten naar Shopify."""
+        success = 0
+        failed = 0
+        for product in self:
+            result = self.env['shopify.sync'].sync_product_to_shopify(product.id)
+            if result:
+                success += 1
+            else:
+                failed += 1
+
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': 'Bulk sync voltooid',
+                'message': f"{success} producten gesynchroniseerd, {failed} mislukt.",
+                'type': 'success' if failed == 0 else 'warning',
+                'sticky': True,
+            }
+        }
 
 
 class ProductProduct(models.Model):
