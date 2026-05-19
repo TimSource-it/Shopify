@@ -1,6 +1,7 @@
 from odoo import models, fields, api
 import requests
 import logging
+import base64
 
 _logger = logging.getLogger(__name__)
 
@@ -27,6 +28,37 @@ class ShopifySync(models.AbstractModel):
                 _logger.warning(f"Prijslijst prijs ophalen mislukt, gebruik standaard prijs: {e}")
                 return variant.lst_price
         return variant.lst_price
+
+    @api.model
+    def _get_product_images(self, product):
+        """Haal productafbeeldingen op als base64."""
+        images = []
+
+        # Hoofdafbeelding
+        if product.image_1920:
+            try:
+                img_data = product.image_1920
+                if isinstance(img_data, bytes):
+                    img_data = img_data.decode('utf-8')
+                images.append({'attachment': img_data})
+            except Exception as e:
+                _logger.warning(f"Hoofdafbeelding ophalen mislukt: {e}")
+
+        # Extra afbeeldingen
+        try:
+            for extra_img in product.product_template_image_ids:
+                if extra_img.image_1920:
+                    try:
+                        img_data = extra_img.image_1920
+                        if isinstance(img_data, bytes):
+                            img_data = img_data.decode('utf-8')
+                        images.append({'attachment': img_data})
+                    except Exception as e:
+                        _logger.warning(f"Extra afbeelding ophalen mislukt: {e}")
+        except Exception as e:
+            _logger.warning(f"Extra afbeeldingen ophalen mislukt: {e}")
+
+        return images
 
     @api.model
     def sync_product_to_shopify(self, product_tmpl_id, config=None):
@@ -88,7 +120,7 @@ class ShopifySync(models.AbstractModel):
             else:
                 vendor = self.env.company.name
 
-            # Bepaal tags — gebruik shopify_tags veld of Odoo tags
+            # Bepaal tags
             tags = ''
             if product.shopify_tags:
                 tags = product.shopify_tags
@@ -110,6 +142,11 @@ class ShopifySync(models.AbstractModel):
                     'variants': [],
                 }
             }
+
+            # Voeg afbeeldingen toe
+            images = self._get_product_images(product)
+            if images:
+                product_data['product']['images'] = images
 
             # Voeg varianten toe
             for variant in product.product_variant_ids:
