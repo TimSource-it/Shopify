@@ -23,6 +23,11 @@ class ProductTemplate(models.Model):
         string='Shopify sync fout',
         copy=False,
     )
+    shopify_published = fields.Boolean(
+        string='Publiceren op Shopify',
+        default=False,
+        help='Als dit aangevinkt is wordt het product gesynchroniseerd naar Shopify.',
+    )
 
     def action_sync_to_shopify(self):
         """Synchroniseer dit product naar Shopify."""
@@ -46,7 +51,11 @@ class ProductTemplate(models.Model):
         """Synchroniseer meerdere producten naar Shopify."""
         success = 0
         failed = 0
+        skipped = 0
         for product in self:
+            if not product.shopify_published:
+                skipped += 1
+                continue
             result = self.env['shopify.sync'].sync_product_to_shopify(product.id)
             if result:
                 success += 1
@@ -58,7 +67,7 @@ class ProductTemplate(models.Model):
             'tag': 'display_notification',
             'params': {
                 'title': 'Bulk sync voltooid',
-                'message': f"{success} producten gesynchroniseerd, {failed} mislukt.",
+                'message': f"{success} gesynchroniseerd, {failed} mislukt, {skipped} overgeslagen.",
                 'type': 'success' if failed == 0 else 'warning',
                 'sticky': True,
             }
