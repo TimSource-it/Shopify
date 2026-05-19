@@ -35,6 +35,12 @@ class ShopifyConfig(models.Model):
         ('error', 'Fout'),
     ], string='Status', default='draft')
 
+    pricelist_id = fields.Many2one(
+        'product.pricelist',
+        string='Prijslijst voor Shopify',
+        help='Welke prijslijst wordt gebruikt voor de prijs naar Shopify. Leeg = standaard verkoopprijs.',
+    )
+
     sync_products = fields.Boolean(string='Producten synchroniseren', default=True)
     sync_orders = fields.Boolean(string='Bestellingen importeren', default=True)
     sync_inventory = fields.Boolean(string='Voorraad synchroniseren', default=True)
