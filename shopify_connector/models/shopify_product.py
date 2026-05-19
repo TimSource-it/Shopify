@@ -33,6 +33,11 @@ class ProductTemplate(models.Model):
         help='Komma gescheiden tags voor Shopify. Bijv: nieuw, sale, featured',
         copy=False,
     )
+    shopify_description = fields.Html(
+        string='Shopify Beschrijving',
+        help='Specifieke beschrijving voor Shopify. Leeg = website beschrijving of verkoopbeschrijving.',
+        copy=False,
+    )
 
     def action_sync_to_shopify(self):
         """Synchroniseer dit product naar Shopify."""
