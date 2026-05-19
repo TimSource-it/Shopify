@@ -220,3 +220,7 @@ class ShopifyConfig(models.Model):
         except requests.exceptions.Timeout:
             self.state = 'error'
             raise UserError("Verbinding time-out.")
+
+    def _pricelist_available(self):
+        """Controleer of de prijslijst module beschikbaar is."""
+        return 'product.pricelist' in self.env
