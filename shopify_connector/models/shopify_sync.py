@@ -30,6 +30,11 @@ class ShopifySync(models.AbstractModel):
         if not product.exists():
             return False
 
+        # Check of product gepubliceerd mag worden
+        if not product.shopify_published:
+            _logger.info(f"Product {product.name} wordt niet gesynchroniseerd (niet gepubliceerd)")
+            return False
+
         try:
             # Bepaal vendor
             vendor = ''
@@ -45,7 +50,7 @@ class ShopifySync(models.AbstractModel):
                     'body_html': product.description_sale or '',
                     'vendor': vendor,
                     'product_type': product.categ_id.name or '',
-                    'status': 'active' if product.active else 'draft',
+                    'status': 'active' if product.shopify_published else 'draft',
                     'variants': [],
                 }
             }
