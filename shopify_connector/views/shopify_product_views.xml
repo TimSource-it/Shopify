@@ -24,4 +24,15 @@
             </notebook>
         </field>
     </record>
+
+    <record id="action_shopify_sync_products" model="ir.actions.server">
+        <field name="name">Sync naar Shopify</field>
+        <field name="model_id" ref="product.model_product_template"/>
+        <field name="binding_model_id" ref="product.model_product_template"/>
+        <field name="state">code</field>
+        <field name="code">
+for record in records:
+    env['shopify.sync'].sync_product_to_shopify(record.id)
+        </field>
+    </record>
 </odoo>
