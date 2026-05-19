@@ -20,6 +20,9 @@
                                    invisible="not shopify_sync_error"/>
                         </group>
                     </group>
+                    <group string="Shopify Beschrijving">
+                        <field name="shopify_description" widget="html" nolabel="1"/>
+                    </group>
                     <button name="action_sync_to_shopify"
                             string="Sync naar Shopify"
                             type="object"
