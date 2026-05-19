@@ -31,12 +31,20 @@ class ShopifySync(models.AbstractModel):
             return False
 
         try:
+            # Bepaal vendor
+            vendor = ''
+            if product.seller_ids:
+                vendor = product.seller_ids[0].partner_id.name
+            else:
+                vendor = self.env.company.name
+
             # Bouw product data op
             product_data = {
                 'product': {
                     'title': product.name,
                     'body_html': product.description_sale or '',
-                    'vendor': product.categ_id.name or '',
+                    'vendor': vendor,
+                    'product_type': product.categ_id.name or '',
                     'status': 'active' if product.active else 'draft',
                     'variants': [],
                 }
