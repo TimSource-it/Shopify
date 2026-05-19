@@ -1,7 +1,6 @@
 from odoo import models, fields, api
 import requests
 import logging
-import base64
 
 _logger = logging.getLogger(__name__)
 
@@ -61,6 +60,17 @@ class ShopifySync(models.AbstractModel):
         return images
 
     @api.model
+    def _get_description(self, product):
+        """Haal beschrijving op met prioriteitsvolgorde."""
+        if product.shopify_description:
+            return product.shopify_description
+        if hasattr(product, 'website_description') and product.website_description:
+            return product.website_description
+        if product.description_sale:
+            return product.description_sale
+        return ''
+
+    @api.model
     def sync_product_to_shopify(self, product_tmpl_id, config=None):
         """Synchroniseer een product van Odoo naar Shopify."""
         if not config:
@@ -86,7 +96,6 @@ class ShopifySync(models.AbstractModel):
             # Check of product gepubliceerd mag worden
             if not shopify_published:
                 if shopify_product_id:
-                    # Zet op draft in Shopify
                     url = f"{config.shop_url}/admin/api/2025-01/products/{shopify_product_id}.json"
                     response = requests.put(
                         url,
@@ -130,11 +139,14 @@ class ShopifySync(models.AbstractModel):
                 except Exception:
                     tags = ''
 
+            # Bepaal beschrijving
+            body_html = self._get_description(product)
+
             # Bouw product data op
             product_data = {
                 'product': {
                     'title': product.name,
-                    'body_html': product.description_sale or '',
+                    'body_html': body_html,
                     'vendor': vendor,
                     'product_type': product.categ_id.name or '',
                     'status': 'active',
@@ -159,11 +171,9 @@ class ShopifySync(models.AbstractModel):
                     'inventory_policy': 'continue' if config.allow_backorder else 'deny',
                 }
 
-                # Barcode indien beschikbaar
                 if hasattr(variant, 'barcode') and variant.barcode:
                     variant_data['barcode'] = variant.barcode
 
-                # Gewicht indien beschikbaar
                 if hasattr(product, 'weight') and product.weight:
                     variant_data['weight'] = product.weight
                     variant_data['weight_unit'] = 'kg'
@@ -199,7 +209,6 @@ class ShopifySync(models.AbstractModel):
                     'shopify_sync_status': 'synced',
                     'shopify_sync_error': False,
                 }
-                # Sla variant IDs op
                 shopify_variants = shopify_product.get('variants', [])
                 for i, variant in enumerate(product.product_variant_ids):
                     if i < len(shopify_variants):
