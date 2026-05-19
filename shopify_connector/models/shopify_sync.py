@@ -80,10 +80,24 @@ class ShopifySync(models.AbstractModel):
         if not config.sync_inventory:
             return True
 
-        # Haal locatie op als nog niet bekend
-        if not config.shopify_location_id:
+        # Haal location_id direct uit DB om cache problemen te voorkomen
+        self.env.cr.execute(
+            "SELECT shopify_location_id FROM shopify_config WHERE id = %s",
+            (config.id,)
+        )
+        row = self.env.cr.fetchone()
+        location_id = row[0] if row else False
+
+        if not location_id:
             config._fetch_location_id()
-        if not config.shopify_location_id:
+            self.env.cr.execute(
+                "SELECT shopify_location_id FROM shopify_config WHERE id = %s",
+                (config.id,)
+            )
+            row = self.env.cr.fetchone()
+            location_id = row[0] if row else False
+
+        if not location_id:
             _logger.error("Geen Shopify locatie gevonden")
             return False
 
@@ -101,7 +115,7 @@ class ShopifySync(models.AbstractModel):
                 response = requests.post(
                     url,
                     json={
-                        'location_id': int(config.shopify_location_id),
+                        'location_id': int(location_id),
                         'inventory_item_id': int(variant.shopify_inventory_item_id),
                         'available': qty,
                     },
