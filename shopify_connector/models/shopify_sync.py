@@ -30,15 +30,24 @@ class ShopifySync(models.AbstractModel):
         if not product.exists():
             return False
 
+        # Haal shopify_product_id direct uit DB om cache problemen te voorkomen
+        self.env.cr.execute(
+            "SELECT shopify_product_id, shopify_published FROM product_template WHERE id = %s",
+            (product.id,)
+        )
+        row = self.env.cr.fetchone()
+        shopify_product_id = row[0] if row else False
+        shopify_published = row[1] if row else False
+
         try:
             # Check of product gepubliceerd mag worden
-            if not product.shopify_published:
-                if product.shopify_product_id:
+            if not shopify_published:
+                if shopify_product_id:
                     # Zet op draft in Shopify
-                    url = f"{config.shop_url}/admin/api/2025-01/products/{product.shopify_product_id}.json"
+                    url = f"{config.shop_url}/admin/api/2025-01/products/{shopify_product_id}.json"
                     response = requests.put(
                         url,
-                        json={'product': {'id': product.shopify_product_id, 'status': 'draft'}},
+                        json={'product': {'id': shopify_product_id, 'status': 'draft'}},
                         headers=config._get_headers(),
                         timeout=15
                     )
@@ -55,6 +64,7 @@ class ShopifySync(models.AbstractModel):
                             'shopify_sync_status': 'error',
                             'shopify_sync_error': error,
                         })
+                        _logger.error(f"Product draft mislukt: {error}")
                         return False
                 else:
                     _logger.info(f"Product {product.name} wordt niet gesynchroniseerd (niet gepubliceerd)")
@@ -92,8 +102,8 @@ class ShopifySync(models.AbstractModel):
                 product_data['product']['variants'].append(variant_data)
 
             # Nieuw product of update?
-            if product.shopify_product_id:
-                url = f"{config.shop_url}/admin/api/2025-01/products/{product.shopify_product_id}.json"
+            if shopify_product_id:
+                url = f"{config.shop_url}/admin/api/2025-01/products/{shopify_product_id}.json"
                 response = requests.put(
                     url,
                     json=product_data,
