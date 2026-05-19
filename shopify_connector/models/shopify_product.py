@@ -28,10 +28,28 @@ class ProductTemplate(models.Model):
         default=False,
         help='Als dit aangevinkt is wordt het product gesynchroniseerd naar Shopify.',
     )
+    shopify_tags = fields.Char(
+        string='Shopify Tags',
+        help='Komma gescheiden tags voor Shopify. Bijv: nieuw, sale, featured',
+        copy=False,
+    )
 
     def action_sync_to_shopify(self):
         """Synchroniseer dit product naar Shopify."""
         self.ensure_one()
+
+        if not self.shopify_published and not self.shopify_product_id:
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': 'Niet gesynchroniseerd',
+                    'message': "Zet 'Publiceren op Shopify' aan om dit product te synchroniseren.",
+                    'type': 'warning',
+                    'sticky': False,
+                }
+            }
+
         result = self.env['shopify.sync'].sync_product_to_shopify(self.id)
         if result:
             return {
@@ -53,7 +71,7 @@ class ProductTemplate(models.Model):
         failed = 0
         skipped = 0
         for product in self:
-            if not product.shopify_published:
+            if not product.shopify_published and not product.shopify_product_id:
                 skipped += 1
                 continue
             result = self.env['shopify.sync'].sync_product_to_shopify(product.id)
