@@ -4,3 +4,4 @@ from . import shopify_product
 from . import shopify_order
 from . import shopify_partner
 from . import shopify_sync_job
+from . import shopify_sync
