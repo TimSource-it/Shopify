@@ -21,7 +21,11 @@ class ShopifySync(models.AbstractModel):
     def _get_price(self, variant, config):
         """Haal de prijs op via prijslijst of standaard verkoopprijs."""
         if config.pricelist_id:
-            return config.pricelist_id._get_product_price(variant, 1.0)
+            try:
+                return config.pricelist_id._get_product_price(variant, 1.0)
+            except Exception as e:
+                _logger.warning(f"Prijslijst prijs ophalen mislukt, gebruik standaard prijs: {e}")
+                return variant.lst_price
         return variant.lst_price
 
     @api.model
@@ -84,12 +88,15 @@ class ShopifySync(models.AbstractModel):
             else:
                 vendor = self.env.company.name
 
-            # Bepaal tags
+            # Bepaal tags — gebruik shopify_tags veld of Odoo tags
             tags = ''
             if product.shopify_tags:
                 tags = product.shopify_tags
-            elif product.tag_ids:
-                tags = ','.join(product.tag_ids.mapped('name'))
+            elif hasattr(product, 'tag_ids') and product.tag_ids:
+                try:
+                    tags = ','.join(product.tag_ids.mapped('name'))
+                except Exception:
+                    tags = ''
 
             # Bouw product data op
             product_data = {
@@ -111,14 +118,22 @@ class ShopifySync(models.AbstractModel):
                 variant_data = {
                     'price': str(price),
                     'sku': variant.default_code or '',
-                    'barcode': variant.barcode or '',
-                    'weight': product.weight or 0.0,
-                    'weight_unit': 'kg',
                     'inventory_management': 'shopify',
                     'inventory_policy': 'continue' if config.allow_backorder else 'deny',
                 }
+
+                # Barcode indien beschikbaar
+                if hasattr(variant, 'barcode') and variant.barcode:
+                    variant_data['barcode'] = variant.barcode
+
+                # Gewicht indien beschikbaar
+                if hasattr(product, 'weight') and product.weight:
+                    variant_data['weight'] = product.weight
+                    variant_data['weight_unit'] = 'kg'
+
                 if variant.shopify_variant_id:
                     variant_data['id'] = variant.shopify_variant_id
+
                 product_data['product']['variants'].append(variant_data)
 
             # Nieuw product of update?
