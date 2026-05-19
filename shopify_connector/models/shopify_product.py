@@ -1,4 +1,5 @@
-from odoo import models, fields
+from odoo import models, fields, api
+from odoo.exceptions import UserError
 
 
 class ProductTemplate(models.Model):
@@ -22,6 +23,24 @@ class ProductTemplate(models.Model):
         string='Shopify sync fout',
         copy=False,
     )
+
+    def action_sync_to_shopify(self):
+        """Synchroniseer dit product naar Shopify."""
+        self.ensure_one()
+        result = self.env['shopify.sync'].sync_product_to_shopify(self.id)
+        if result:
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': 'Gesynchroniseerd!',
+                    'message': f"{self.name} is succesvol gesynchroniseerd naar Shopify.",
+                    'type': 'success',
+                    'sticky': False,
+                }
+            }
+        else:
+            raise UserError(f"Synchronisatie mislukt. Controleer de sync status voor details.")
 
 
 class ProductProduct(models.Model):
