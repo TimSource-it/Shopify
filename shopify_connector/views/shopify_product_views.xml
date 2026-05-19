@@ -10,6 +10,7 @@
                     <group>
                         <group string="Shopify Instellingen">
                             <field name="shopify_published"/>
+                            <field name="shopify_tags"/>
                         </group>
                         <group string="Shopify Status">
                             <field name="shopify_product_id" readonly="1"/>
