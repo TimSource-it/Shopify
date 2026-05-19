@@ -30,12 +30,36 @@ class ShopifySync(models.AbstractModel):
         if not product.exists():
             return False
 
-        # Check of product gepubliceerd mag worden
-        if not product.shopify_published:
-            _logger.info(f"Product {product.name} wordt niet gesynchroniseerd (niet gepubliceerd)")
-            return False
-
         try:
+            # Check of product gepubliceerd mag worden
+            if not product.shopify_published:
+                if product.shopify_product_id:
+                    # Zet op draft in Shopify
+                    url = f"{config.shop_url}/admin/api/2025-01/products/{product.shopify_product_id}.json"
+                    response = requests.put(
+                        url,
+                        json={'product': {'id': product.shopify_product_id, 'status': 'draft'}},
+                        headers=config._get_headers(),
+                        timeout=15
+                    )
+                    if response.status_code == 200:
+                        product.write({
+                            'shopify_sync_status': 'synced',
+                            'shopify_last_sync': fields.Datetime.now(),
+                        })
+                        _logger.info(f"Product {product.name} op draft gezet in Shopify")
+                        return True
+                    else:
+                        error = response.text[:200]
+                        product.write({
+                            'shopify_sync_status': 'error',
+                            'shopify_sync_error': error,
+                        })
+                        return False
+                else:
+                    _logger.info(f"Product {product.name} wordt niet gesynchroniseerd (niet gepubliceerd)")
+                    return False
+
             # Bepaal vendor
             vendor = ''
             if product.seller_ids:
@@ -50,7 +74,7 @@ class ShopifySync(models.AbstractModel):
                     'body_html': product.description_sale or '',
                     'vendor': vendor,
                     'product_type': product.categ_id.name or '',
-                    'status': 'active' if product.shopify_published else 'draft',
+                    'status': 'active',
                     'variants': [],
                 }
             }
