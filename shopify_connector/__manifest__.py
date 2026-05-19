@@ -16,6 +16,7 @@
     'data': [
         'security/ir.model.access.csv',
         'views/shopify_config_views.xml',
+        'views/shopify_product_views.xml',
         'data/shopify_cron.xml',
     ],
     'installable': True,
