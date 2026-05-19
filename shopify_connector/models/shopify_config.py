@@ -3,6 +3,7 @@ from odoo.exceptions import UserError
 import requests
 import secrets
 import logging
+from datetime import datetime, timedelta
 
 _logger = logging.getLogger(__name__)
 
@@ -52,9 +53,18 @@ class ShopifyConfig(models.Model):
             else:
                 rec.shop_url = False
 
+    def _get_valid_token(self):
+        """Geeft een geldig access token terug, vernieuwt indien nodig."""
+        if self.access_token_expires_at:
+            if datetime.utcnow() >= self.access_token_expires_at - timedelta(minutes=5):
+                _logger.info(f"Token verlopen voor {self.shop_name}, vernieuwen...")
+                self._refresh_access_token()
+        return self.access_token
+
     def _get_headers(self):
+        token = self._get_valid_token()
         return {
-            'X-Shopify-Access-Token': self.access_token,
+            'X-Shopify-Access-Token': token,
             'Content-Type': 'application/json',
         }
 
@@ -125,7 +135,6 @@ class ShopifyConfig(models.Model):
                 if token_data.get('refresh_token'):
                     vals['refresh_token'] = token_data['refresh_token']
                 if token_data.get('expires_in'):
-                    from datetime import datetime, timedelta
                     vals['access_token_expires_at'] = datetime.utcnow() + timedelta(seconds=token_data['expires_in'])
                 self.write(vals)
                 return True
@@ -142,7 +151,8 @@ class ShopifyConfig(models.Model):
         """Vernieuwt het access token met het refresh token."""
         self.ensure_one()
         if not self.refresh_token:
-            raise UserError("Geen refresh token beschikbaar.")
+            _logger.error(f"Geen refresh token voor {self.shop_name}")
+            return False
         try:
             url = f"{self.shop_url}/admin/oauth/access_token"
             response = requests.post(
@@ -163,37 +173,25 @@ class ShopifyConfig(models.Model):
                 if token_data.get('refresh_token'):
                     vals['refresh_token'] = token_data['refresh_token']
                 if token_data.get('expires_in'):
-                    from datetime import datetime, timedelta
                     vals['access_token_expires_at'] = datetime.utcnow() + timedelta(seconds=token_data['expires_in'])
                 self.write(vals)
+                _logger.info(f"Token vernieuwd voor {self.shop_name}")
                 return True
             else:
                 _logger.error(f"Token refresh mislukt: {response.text}")
+                self.state = 'error'
                 return False
         except Exception as e:
             _logger.error(f"Token refresh fout: {e}")
             return False
-
-    def _get_valid_token(self):
-        """Geeft een geldig access token terug, vernieuwt indien nodig."""
-        from datetime import datetime, timedelta
-        if self.access_token_expires_at:
-            if datetime.utcnow() >= self.access_token_expires_at - timedelta(minutes=5):
-                self._refresh_access_token()
-        return self.access_token
 
     def action_test_connection(self):
         self.ensure_one()
         if not self.access_token:
             raise UserError("Geen access token. Klik eerst op Verbind met Shopify.")
         try:
-            token = self._get_valid_token()
             url = f"{self.shop_url}/admin/api/2025-01/shop.json"
-            headers = {
-                'X-Shopify-Access-Token': token,
-                'Content-Type': 'application/json',
-            }
-            response = requests.get(url, headers=headers, timeout=10)
+            response = requests.get(url, headers=self._get_headers(), timeout=10)
             if response.status_code == 200:
                 shop_data = response.json().get('shop', {})
                 self.state = 'connected'
