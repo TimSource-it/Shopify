@@ -40,6 +40,10 @@ class ShopifyConfig(models.Model):
         string='Prijslijst voor Shopify',
         help='Welke prijslijst wordt gebruikt voor de prijs naar Shopify. Leeg = standaard verkoopprijs.',
     )
+    shopify_location_id = fields.Char(
+        string='Shopify Locatie ID',
+        help='Wordt automatisch opgehaald bij verbinding.',
+    )
 
     sync_products = fields.Boolean(string='Producten synchroniseren', default=True)
     sync_orders = fields.Boolean(string='Bestellingen importeren', default=True)
@@ -58,6 +62,22 @@ class ShopifyConfig(models.Model):
                 rec.shop_url = f"https://{rec.shop_name}.myshopify.com"
             else:
                 rec.shop_url = False
+
+    def _fetch_location_id(self):
+        """Haal de eerste actieve Shopify locatie op."""
+        try:
+            url = f"{self.shop_url}/admin/api/2025-01/locations.json"
+            response = requests.get(url, headers=self._get_headers(), timeout=10)
+            if response.status_code == 200:
+                locations = response.json().get('locations', [])
+                active = [l for l in locations if l.get('active')]
+                if active:
+                    self.shopify_location_id = str(active[0]['id'])
+                    _logger.info(f"Locatie ID opgehaald: {self.shopify_location_id}")
+                    return self.shopify_location_id
+        except Exception as e:
+            _logger.error(f"Locatie ophalen mislukt: {e}")
+        return False
 
     def _get_valid_token(self):
         """Geeft een geldig access token terug, vernieuwt indien nodig."""
@@ -143,6 +163,8 @@ class ShopifyConfig(models.Model):
                 if token_data.get('expires_in'):
                     vals['access_token_expires_at'] = datetime.utcnow() + timedelta(seconds=token_data['expires_in'])
                 self.write(vals)
+                # Haal locatie ID op na verbinding
+                self._fetch_location_id()
                 return True
             else:
                 self.state = 'error'
@@ -201,6 +223,9 @@ class ShopifyConfig(models.Model):
             if response.status_code == 200:
                 shop_data = response.json().get('shop', {})
                 self.state = 'connected'
+                # Haal locatie ID op als nog niet bekend
+                if not self.shopify_location_id:
+                    self._fetch_location_id()
                 return {
                     'type': 'ir.actions.client',
                     'tag': 'display_notification',
@@ -220,7 +245,3 @@ class ShopifyConfig(models.Model):
         except requests.exceptions.Timeout:
             self.state = 'error'
             raise UserError("Verbinding time-out.")
-
-    def _pricelist_available(self):
-        """Controleer of de prijslijst module beschikbaar is."""
-        return 'product.pricelist' in self.env
