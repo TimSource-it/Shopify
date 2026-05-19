@@ -18,6 +18,13 @@ class ShopifySync(models.AbstractModel):
         return self.env['shopify.config'].search(domain, limit=1)
 
     @api.model
+    def _get_price(self, variant, config):
+        """Haal de prijs op via prijslijst of standaard verkoopprijs."""
+        if config.pricelist_id:
+            return config.pricelist_id._get_product_price(variant, 1.0)
+        return variant.lst_price
+
+    @api.model
     def sync_product_to_shopify(self, product_tmpl_id, config=None):
         """Synchroniseer een product van Odoo naar Shopify."""
         if not config:
@@ -30,7 +37,7 @@ class ShopifySync(models.AbstractModel):
         if not product.exists():
             return False
 
-        # Haal shopify_product_id direct uit DB om cache problemen te voorkomen
+        # Haal shopify velden direct uit DB om cache problemen te voorkomen
         self.env.cr.execute(
             "SELECT shopify_product_id, shopify_published FROM product_template WHERE id = %s",
             (product.id,)
@@ -77,6 +84,13 @@ class ShopifySync(models.AbstractModel):
             else:
                 vendor = self.env.company.name
 
+            # Bepaal tags
+            tags = ''
+            if product.shopify_tags:
+                tags = product.shopify_tags
+            elif product.tag_ids:
+                tags = ','.join(product.tag_ids.mapped('name'))
+
             # Bouw product data op
             product_data = {
                 'product': {
@@ -85,15 +99,21 @@ class ShopifySync(models.AbstractModel):
                     'vendor': vendor,
                     'product_type': product.categ_id.name or '',
                     'status': 'active',
+                    'tags': tags,
                     'variants': [],
                 }
             }
 
             # Voeg varianten toe
             for variant in product.product_variant_ids:
+                price = self._get_price(variant, config)
+
                 variant_data = {
-                    'price': str(variant.lst_price),
+                    'price': str(price),
                     'sku': variant.default_code or '',
+                    'barcode': variant.barcode or '',
+                    'weight': product.weight or 0.0,
+                    'weight_unit': 'kg',
                     'inventory_management': 'shopify',
                     'inventory_policy': 'continue' if config.allow_backorder else 'deny',
                 }
