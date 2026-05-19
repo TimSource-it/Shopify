@@ -33,7 +33,6 @@ class ShopifySync(models.AbstractModel):
         """Haal productafbeeldingen op als base64."""
         images = []
 
-        # Hoofdafbeelding
         if product.image_1920:
             try:
                 img_data = product.image_1920
@@ -43,7 +42,6 @@ class ShopifySync(models.AbstractModel):
             except Exception as e:
                 _logger.warning(f"Hoofdafbeelding ophalen mislukt: {e}")
 
-        # Extra afbeeldingen
         try:
             for extra_img in product.product_template_image_ids:
                 if extra_img.image_1920:
@@ -69,6 +67,57 @@ class ShopifySync(models.AbstractModel):
         if product.description_sale:
             return product.description_sale
         return ''
+
+    @api.model
+    def sync_inventory_to_shopify(self, product_tmpl_id, config=None):
+        """Synchroniseer voorraad van Odoo naar Shopify."""
+        if not config:
+            config = self._get_config()
+        if not config:
+            _logger.error("Geen actieve Shopify configuratie gevonden")
+            return False
+
+        if not config.sync_inventory:
+            return True
+
+        # Haal locatie op als nog niet bekend
+        if not config.shopify_location_id:
+            config._fetch_location_id()
+        if not config.shopify_location_id:
+            _logger.error("Geen Shopify locatie gevonden")
+            return False
+
+        product = self.env['product.template'].browse(product_tmpl_id)
+        if not product.exists():
+            return False
+
+        success = True
+        for variant in product.product_variant_ids:
+            if not variant.shopify_inventory_item_id:
+                continue
+            try:
+                qty = int(variant.qty_available)
+                url = f"{config.shop_url}/admin/api/2025-01/inventory_levels/set.json"
+                response = requests.post(
+                    url,
+                    json={
+                        'location_id': int(config.shopify_location_id),
+                        'inventory_item_id': int(variant.shopify_inventory_item_id),
+                        'available': qty,
+                    },
+                    headers=config._get_headers(),
+                    timeout=15
+                )
+                if response.status_code == 200:
+                    _logger.info(f"Voorraad {qty} gesynchroniseerd voor {variant.name}")
+                else:
+                    _logger.error(f"Voorraad sync mislukt: {response.text[:200]}")
+                    success = False
+            except Exception as e:
+                _logger.error(f"Voorraad sync fout: {e}")
+                success = False
+
+        return success
 
     @api.model
     def sync_product_to_shopify(self, product_tmpl_id, config=None):
@@ -218,6 +267,11 @@ class ShopifySync(models.AbstractModel):
                         })
                 product.write(vals)
                 _logger.info(f"Product {product.name} gesynchroniseerd naar Shopify")
+
+                # Synchroniseer ook de voorraad
+                if config.sync_inventory:
+                    self.sync_inventory_to_shopify(product_tmpl_id, config)
+
                 return True
             else:
                 error = response.text[:200]
