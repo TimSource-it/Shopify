@@ -2,11 +2,12 @@
 <odoo>
     <record id="ir_cron_shopify_sync" model="ir.cron">
         <field name="name">Shopify: automatische synchronisatie</field>
-        <field name="model_id" ref="shopify_connector.model_shopify_config"/>
+        <field name="model_id" ref="shopify_connector.model_shopify_sync"/>
         <field name="state">code</field>
-        <field name="code">model.search([('active','=',True)])</field>
-        <field name="interval_number">30</field>
+        <field name="code">model.cron_sync_pending_products()</field>
+        <field name="interval_number">5</field>
         <field name="interval_type">minutes</field>
-        <field name="active">False</field>
+        <field name="numbercall">-1</field>
+        <field name="active">True</field>
     </record>
 </odoo>
