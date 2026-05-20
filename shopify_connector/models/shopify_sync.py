@@ -69,6 +69,27 @@ class ShopifySync(models.AbstractModel):
         return ''
 
     @api.model
+    def cron_sync_pending_products(self):
+        """Cron job: synchroniseer alle pending producten."""
+        config = self._get_config()
+        if not config:
+            _logger.info("Geen actieve Shopify configuratie gevonden voor cron sync")
+            return
+
+        pending = self.env['product.template'].search([
+            ('shopify_published', '=', True),
+            ('shopify_sync_status', '=', 'pending'),
+        ])
+
+        _logger.info(f"Cron sync: {len(pending)} producten te synchroniseren")
+
+        for product in pending:
+            try:
+                self.sync_product_to_shopify(product.id, config)
+            except Exception as e:
+                _logger.error(f"Cron sync fout voor {product.name}: {e}")
+
+    @api.model
     def sync_inventory_to_shopify(self, product_tmpl_id, config=None):
         """Synchroniseer voorraad van Odoo naar Shopify."""
         if not config:
@@ -80,7 +101,6 @@ class ShopifySync(models.AbstractModel):
         if not config.sync_inventory:
             return True
 
-        # Haal location_id direct uit DB om cache problemen te voorkomen
         self.env.cr.execute(
             "SELECT shopify_location_id FROM shopify_config WHERE id = %s",
             (config.id,)
@@ -146,7 +166,6 @@ class ShopifySync(models.AbstractModel):
         if not product.exists():
             return False
 
-        # Haal shopify velden direct uit DB om cache problemen te voorkomen
         self.env.cr.execute(
             "SELECT shopify_product_id, shopify_published FROM product_template WHERE id = %s",
             (product.id,)
@@ -156,7 +175,6 @@ class ShopifySync(models.AbstractModel):
         shopify_published = row[1] if row else False
 
         try:
-            # Check of product gepubliceerd mag worden
             if not shopify_published:
                 if shopify_product_id:
                     url = f"{config.shop_url}/admin/api/2025-01/products/{shopify_product_id}.json"
@@ -214,6 +232,7 @@ class ShopifySync(models.AbstractModel):
                     'product_type': product.categ_id.name or '',
                     'status': 'active',
                     'tags': tags,
+                    'published_scope': config.published_scope or 'global',
                     'variants': [],
                 }
             }
@@ -246,7 +265,6 @@ class ShopifySync(models.AbstractModel):
 
                 product_data['product']['variants'].append(variant_data)
 
-            # Nieuw product of update?
             if shopify_product_id:
                 url = f"{config.shop_url}/admin/api/2025-01/products/{shopify_product_id}.json"
                 response = requests.put(
@@ -282,7 +300,6 @@ class ShopifySync(models.AbstractModel):
                 product.write(vals)
                 _logger.info(f"Product {product.name} gesynchroniseerd naar Shopify")
 
-                # Synchroniseer ook de voorraad
                 if config.sync_inventory:
                     self.sync_inventory_to_shopify(product_tmpl_id, config)
 
