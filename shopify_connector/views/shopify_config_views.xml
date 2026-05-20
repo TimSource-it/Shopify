@@ -33,6 +33,7 @@
                         <field name="sync_customers"/>
                         <field name="allow_backorder"/>
                         <field name="pricelist_id"/>
+                        <field name="published_scope"/>
                     </group>
                     <group string="Laatste synchronisaties">
                         <field name="last_order_sync" readonly="1"/>
