@@ -44,6 +44,11 @@ class ShopifyConfig(models.Model):
         string='Shopify Locatie ID',
         help='Wordt automatisch opgehaald bij verbinding.',
     )
+    published_scope = fields.Selection([
+        ('web', 'Alleen webshop'),
+        ('global', 'Alle kanalen'),
+    ], string='Verkoopkanaal', default='global',
+        help='Bepaalt op welke verkoopkanalen producten zichtbaar zijn in Shopify.')
 
     sync_products = fields.Boolean(string='Producten synchroniseren', default=True)
     sync_orders = fields.Boolean(string='Bestellingen importeren', default=True)
@@ -153,7 +158,6 @@ class ShopifyConfig(models.Model):
             _logger.info(f"Token exchange response: {response.status_code} - {response.text}")
             if response.status_code == 200:
                 token_data = response.json()
-                _logger.info(f"Token data keys: {list(token_data.keys())}")
                 vals = {
                     'access_token': token_data.get('access_token'),
                     'state': 'connected',
@@ -163,7 +167,6 @@ class ShopifyConfig(models.Model):
                 if token_data.get('expires_in'):
                     vals['access_token_expires_at'] = datetime.utcnow() + timedelta(seconds=token_data['expires_in'])
                 self.write(vals)
-                # Haal locatie ID op na verbinding
                 self._fetch_location_id()
                 return True
             else:
@@ -223,7 +226,6 @@ class ShopifyConfig(models.Model):
             if response.status_code == 200:
                 shop_data = response.json().get('shop', {})
                 self.state = 'connected'
-                # Haal locatie ID op als nog niet bekend
                 if not self.shopify_location_id:
                     self._fetch_location_id()
                 return {
