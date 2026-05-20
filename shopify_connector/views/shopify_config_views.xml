@@ -13,6 +13,9 @@
                     <button name="action_test_connection"
                             string="Test verbinding"
                             type="object"/>
+                    <button name="action_import_orders"
+                            string="Importeer bestellingen"
+                            type="object"/>
                     <field name="state" widget="statusbar"
                            statusbar_visible="draft,connected"/>
                 </header>
