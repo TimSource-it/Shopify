@@ -84,8 +84,8 @@ class ShopifyConfig(models.Model):
             _logger.error(f"Locatie ophalen mislukt: {e}")
         return False
 
-    def _register_gdpr_webhooks(self):
-        """Registreer GDPR compliance webhooks bij Shopify."""
+    def _register_webhooks(self):
+        """Registreer alle webhooks bij Shopify inclusief GDPR en app/uninstalled."""
         base_url = self._get_base_url()
         webhooks = [
             {
@@ -99,6 +99,10 @@ class ShopifyConfig(models.Model):
             {
                 'topic': 'shop/redact',
                 'address': f"{base_url}/shopify/webhooks/shop/redact",
+            },
+            {
+                'topic': 'app/uninstalled',
+                'address': f"{base_url}/shopify/webhooks/app/uninstalled",
             },
         ]
         for webhook in webhooks:
@@ -115,11 +119,11 @@ class ShopifyConfig(models.Model):
                     timeout=10
                 )
                 if response.status_code in (200, 201):
-                    _logger.info(f"GDPR webhook geregistreerd: {webhook['topic']}")
+                    _logger.info(f"Webhook geregistreerd: {webhook['topic']}")
                 else:
-                    _logger.warning(f"GDPR webhook registratie mislukt: {response.text[:200]}")
+                    _logger.warning(f"Webhook registratie mislukt: {response.text[:200]}")
             except Exception as e:
-                _logger.error(f"GDPR webhook registratie fout: {e}")
+                _logger.error(f"Webhook registratie fout: {e}")
 
     def _get_valid_token(self):
         """Geeft een geldig access token terug, vernieuwt indien nodig."""
@@ -205,7 +209,7 @@ class ShopifyConfig(models.Model):
                     vals['access_token_expires_at'] = datetime.utcnow() + timedelta(seconds=token_data['expires_in'])
                 self.write(vals)
                 self._fetch_location_id()
-                self._register_gdpr_webhooks()
+                self._register_webhooks()
                 return True
             else:
                 self.state = 'error'
