@@ -84,6 +84,43 @@ class ShopifyConfig(models.Model):
             _logger.error(f"Locatie ophalen mislukt: {e}")
         return False
 
+    def _register_gdpr_webhooks(self):
+        """Registreer GDPR compliance webhooks bij Shopify."""
+        base_url = self._get_base_url()
+        webhooks = [
+            {
+                'topic': 'customers/redact',
+                'address': f"{base_url}/shopify/webhooks/customers/redact",
+            },
+            {
+                'topic': 'customers/data_request',
+                'address': f"{base_url}/shopify/webhooks/customers/data_request",
+            },
+            {
+                'topic': 'shop/redact',
+                'address': f"{base_url}/shopify/webhooks/shop/redact",
+            },
+        ]
+        for webhook in webhooks:
+            try:
+                url = f"{self.shop_url}/admin/api/2025-01/webhooks.json"
+                response = requests.post(
+                    url,
+                    json={'webhook': {
+                        'topic': webhook['topic'],
+                        'address': webhook['address'],
+                        'format': 'json',
+                    }},
+                    headers=self._get_headers(),
+                    timeout=10
+                )
+                if response.status_code in (200, 201):
+                    _logger.info(f"GDPR webhook geregistreerd: {webhook['topic']}")
+                else:
+                    _logger.warning(f"GDPR webhook registratie mislukt: {response.text[:200]}")
+            except Exception as e:
+                _logger.error(f"GDPR webhook registratie fout: {e}")
+
     def _get_valid_token(self):
         """Geeft een geldig access token terug, vernieuwt indien nodig."""
         if self.access_token_expires_at:
@@ -168,6 +205,7 @@ class ShopifyConfig(models.Model):
                     vals['access_token_expires_at'] = datetime.utcnow() + timedelta(seconds=token_data['expires_in'])
                 self.write(vals)
                 self._fetch_location_id()
+                self._register_gdpr_webhooks()
                 return True
             else:
                 self.state = 'error'
