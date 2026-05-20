@@ -247,3 +247,21 @@ class ShopifyConfig(models.Model):
         except requests.exceptions.Timeout:
             self.state = 'error'
             raise UserError("Verbinding time-out.")
+
+    def action_import_orders(self):
+        """Importeer bestellingen handmatig."""
+        self.ensure_one()
+        imported = self.env['shopify.order.import'].import_orders_from_shopify(self)
+        if imported is not False:
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': 'Import geslaagd!',
+                    'message': f"{imported} bestellingen geïmporteerd.",
+                    'type': 'success',
+                    'sticky': False,
+                }
+            }
+        else:
+            raise UserError("Bestellingen importeren mislukt.")
