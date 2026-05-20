@@ -39,6 +39,24 @@ class ProductTemplate(models.Model):
         copy=False,
     )
 
+    def write(self, vals):
+        result = super().write(vals)
+        # Zet op pending als relevant veld gewijzigd is
+        sync_fields = {
+            'name', 'description_sale', 'shopify_description',
+            'list_price', 'shopify_tags', 'categ_id',
+            'image_1920', 'weight', 'active',
+        }
+        if sync_fields.intersection(vals.keys()):
+            pending_products = self.filtered(
+                lambda p: p.shopify_published and p.shopify_sync_status != 'pending'
+            )
+            if pending_products:
+                pending_products.with_context(no_sync_trigger=True).write({
+                    'shopify_sync_status': 'pending'
+                })
+        return result
+
     def action_sync_to_shopify(self):
         """Synchroniseer dit product naar Shopify."""
         self.ensure_one()
