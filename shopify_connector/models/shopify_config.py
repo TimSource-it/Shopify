@@ -96,6 +96,14 @@ class ShopifyConfig(models.Model):
                 'topic': 'orders/create',
                 'address': f"{base_url}/shopify/webhooks/orders/create",
             },
+            {
+                'topic': 'orders/updated',
+                'address': f"{base_url}/shopify/webhooks/orders/updated",
+            },
+            {
+                'topic': 'orders/cancelled',
+                'address': f"{base_url}/shopify/webhooks/orders/cancelled",
+            },
         ]
         for webhook in webhooks:
             try:
