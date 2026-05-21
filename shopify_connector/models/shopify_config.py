@@ -85,21 +85,9 @@ class ShopifyConfig(models.Model):
         return False
 
     def _register_webhooks(self):
-        """Registreer alle webhooks bij Shopify inclusief GDPR en app/uninstalled."""
+        """Registreer webhooks bij Shopify."""
         base_url = self._get_base_url()
         webhooks = [
-            {
-                'topic': 'customers/redact',
-                'address': f"{base_url}/shopify/webhooks/customers/redact",
-            },
-            {
-                'topic': 'customers/data_request',
-                'address': f"{base_url}/shopify/webhooks/customers/data_request",
-            },
-            {
-                'topic': 'shop/redact',
-                'address': f"{base_url}/shopify/webhooks/shop/redact",
-            },
             {
                 'topic': 'app/uninstalled',
                 'address': f"{base_url}/shopify/webhooks/app/uninstalled",
