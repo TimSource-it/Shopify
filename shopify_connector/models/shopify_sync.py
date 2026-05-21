@@ -69,6 +69,106 @@ class ShopifySync(models.AbstractModel):
         return ''
 
     @api.model
+    def sync_inventory_to_shopify(self, product_tmpl_id, config=None):
+        """Synchroniseer voorraad van Odoo naar Shopify per locatie mapping."""
+        if not config:
+            config = self._get_config()
+        if not config:
+            _logger.error("Geen actieve Shopify configuratie gevonden")
+            return False
+
+        if not config.sync_inventory:
+            return True
+
+        product = self.env['product.template'].browse(product_tmpl_id)
+        if not product.exists():
+            return False
+
+        # Haal locatie mappings op
+        location_mappings = self.env['shopify.location'].search([
+            ('config_id', '=', config.id),
+            ('active', '=', True),
+        ])
+
+        # Fallback naar standaard locatie als geen mappings
+        if not location_mappings:
+            self.env.cr.execute(
+                "SELECT shopify_location_id FROM shopify_config WHERE id = %s",
+                (config.id,)
+            )
+            row = self.env.cr.fetchone()
+            fallback_location = row[0] if row else False
+
+            if not fallback_location:
+                _logger.error("Geen Shopify locatie gevonden")
+                return False
+
+            # Gebruik fallback locatie
+            for variant in product.product_variant_ids:
+                if not variant.shopify_inventory_item_id:
+                    continue
+                try:
+                    qty = int(variant.qty_available)
+                    url = f"{config.shop_url}/admin/api/2025-01/inventory_levels/set.json"
+                    response = requests.post(
+                        url,
+                        json={
+                            'location_id': int(fallback_location),
+                            'inventory_item_id': int(variant.shopify_inventory_item_id),
+                            'available': qty,
+                        },
+                        headers=config._get_headers(),
+                        timeout=15
+                    )
+                    if response.status_code == 200:
+                        _logger.info(f"Voorraad {qty} gesynchroniseerd voor {variant.name}")
+                    else:
+                        _logger.error(f"Voorraad sync mislukt: {response.text[:200]}")
+                except Exception as e:
+                    _logger.error(f"Voorraad sync fout: {e}")
+            return True
+
+        # Synchroniseer per locatie mapping
+        success = True
+        for mapping in location_mappings:
+            for variant in product.product_variant_ids:
+                if not variant.shopify_inventory_item_id:
+                    continue
+                try:
+                    # Haal voorraad op van gekoppeld magazijn
+                    if mapping.warehouse_id:
+                        location = mapping.warehouse_id.lot_stock_id
+                        quant = self.env['stock.quant'].search([
+                            ('product_id', '=', variant.id),
+                            ('location_id', '=', location.id),
+                        ])
+                        qty = int(sum(quant.mapped('quantity')))
+                    else:
+                        qty = int(variant.qty_available)
+
+                    url = f"{config.shop_url}/admin/api/2025-01/inventory_levels/set.json"
+                    response = requests.post(
+                        url,
+                        json={
+                            'location_id': int(mapping.shopify_location_id),
+                            'inventory_item_id': int(variant.shopify_inventory_item_id),
+                            'available': qty,
+                        },
+                        headers=config._get_headers(),
+                        timeout=15
+                    )
+                    if response.status_code == 200:
+                        _logger.info(f"Voorraad {qty} gesynchroniseerd voor {variant.name} naar locatie {mapping.shopify_location_name}")
+                    else:
+                        _logger.error(f"Voorraad sync mislukt: {response.text[:200]}")
+                        success = False
+                except Exception as e:
+                    _logger.error(f"Voorraad sync fout: {e}")
+                    success = False
+
+        return success
+
+    @api.model
     def cron_sync_pending_products(self):
         """Cron job: synchroniseer alle pending producten."""
         config = self._get_config()
@@ -88,70 +188,6 @@ class ShopifySync(models.AbstractModel):
                 self.sync_product_to_shopify(product.id, config)
             except Exception as e:
                 _logger.error(f"Cron sync fout voor {product.name}: {e}")
-
-    @api.model
-    def sync_inventory_to_shopify(self, product_tmpl_id, config=None):
-        """Synchroniseer voorraad van Odoo naar Shopify."""
-        if not config:
-            config = self._get_config()
-        if not config:
-            _logger.error("Geen actieve Shopify configuratie gevonden")
-            return False
-
-        if not config.sync_inventory:
-            return True
-
-        self.env.cr.execute(
-            "SELECT shopify_location_id FROM shopify_config WHERE id = %s",
-            (config.id,)
-        )
-        row = self.env.cr.fetchone()
-        location_id = row[0] if row else False
-
-        if not location_id:
-            config._fetch_location_id()
-            self.env.cr.execute(
-                "SELECT shopify_location_id FROM shopify_config WHERE id = %s",
-                (config.id,)
-            )
-            row = self.env.cr.fetchone()
-            location_id = row[0] if row else False
-
-        if not location_id:
-            _logger.error("Geen Shopify locatie gevonden")
-            return False
-
-        product = self.env['product.template'].browse(product_tmpl_id)
-        if not product.exists():
-            return False
-
-        success = True
-        for variant in product.product_variant_ids:
-            if not variant.shopify_inventory_item_id:
-                continue
-            try:
-                qty = int(variant.qty_available)
-                url = f"{config.shop_url}/admin/api/2025-01/inventory_levels/set.json"
-                response = requests.post(
-                    url,
-                    json={
-                        'location_id': int(location_id),
-                        'inventory_item_id': int(variant.shopify_inventory_item_id),
-                        'available': qty,
-                    },
-                    headers=config._get_headers(),
-                    timeout=15
-                )
-                if response.status_code == 200:
-                    _logger.info(f"Voorraad {qty} gesynchroniseerd voor {variant.name}")
-                else:
-                    _logger.error(f"Voorraad sync mislukt: {response.text[:200]}")
-                    success = False
-            except Exception as e:
-                _logger.error(f"Voorraad sync fout: {e}")
-                success = False
-
-        return success
 
     @api.model
     def sync_product_to_shopify(self, product_tmpl_id, config=None):
