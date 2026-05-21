@@ -28,6 +28,14 @@ class ShopifyWebhookController(http.Controller):
             _logger.error(f"Webhook verificatie fout: {e}")
             return False
 
+    def _get_config_for_shop(self, shop_domain):
+        """Haal de config op voor een shop domain."""
+        shop_name = shop_domain.replace('.myshopify.com', '')
+        return request.env['shopify.config'].sudo().search([
+            ('shop_name', '=', shop_name),
+            ('state', '=', 'connected'),
+        ], limit=1)
+
     @http.route('/shopify/webhooks/customers/redact',
                 type='http', auth='public', csrf=False, methods=['POST'])
     def customers_redact(self, **kwargs):
@@ -79,9 +87,7 @@ class ShopifyWebhookController(http.Controller):
 
             payload = json.loads(data)
             shop_domain = payload.get('shop_domain', '')
-            shop_name = shop_domain.replace('.myshopify.com', '')
-
-            _logger.info(f"Shop redact verzoek ontvangen voor: {shop_name}")
+            _logger.info(f"Shop redact verzoek ontvangen voor: {shop_domain}")
 
             return request.make_response('OK', status=200)
         except Exception as e:
@@ -157,11 +163,7 @@ class ShopifyWebhookController(http.Controller):
 
             order_data = json.loads(data)
             shop_domain = request.httprequest.headers.get('X-Shopify-Shop-Domain', '')
-            shop_name = shop_domain.replace('.myshopify.com', '')
-
-            config = request.env['shopify.config'].sudo().search([
-                ('shop_name', '=', shop_name)
-            ], limit=1)
+            config = self._get_config_for_shop(shop_domain)
 
             if config:
                 request.env['shopify.order.import'].sudo()._import_order(order_data, config)
@@ -170,4 +172,79 @@ class ShopifyWebhookController(http.Controller):
             return request.make_response('OK', status=200)
         except Exception as e:
             _logger.error(f"orders/create webhook fout: {e}")
+            return request.make_response('OK', status=200)
+
+    @http.route('/shopify/webhooks/orders/updated',
+                type='http', auth='public', csrf=False, methods=['POST'])
+    def orders_updated(self, **kwargs):
+        """Update van bestaande Shopify bestelling."""
+        try:
+            data = request.httprequest.data
+            hmac_header = request.httprequest.headers.get('X-Shopify-Hmac-Sha256', '')
+
+            if not self._verify_webhook(data, hmac_header):
+                _logger.warning("Webhook HMAC verificatie mislukt voor orders/updated")
+                return request.make_response('Unauthorized', status=401)
+
+            order_data = json.loads(data)
+            shopify_order_id = str(order_data.get('id', ''))
+            financial_status = order_data.get('financial_status', '')
+            fulfillment_status = order_data.get('fulfillment_status', '') or 'unfulfilled'
+
+            # Zoek bestaande order in Odoo
+            order = request.env['sale.order'].sudo().search([
+                ('shopify_order_id', '=', shopify_order_id)
+            ], limit=1)
+
+            if order:
+                order.sudo().write({
+                    'shopify_financial_status': financial_status,
+                    'shopify_fulfillment_status': fulfillment_status,
+                })
+                _logger.info(f"Bestelling {order.name} bijgewerkt: {financial_status} / {fulfillment_status}")
+            else:
+                # Bestelling bestaat nog niet — importeer hem
+                shop_domain = request.httprequest.headers.get('X-Shopify-Shop-Domain', '')
+                config = self._get_config_for_shop(shop_domain)
+                if config:
+                    request.env['shopify.order.import'].sudo()._import_order(order_data, config)
+
+            return request.make_response('OK', status=200)
+        except Exception as e:
+            _logger.error(f"orders/updated webhook fout: {e}")
+            return request.make_response('OK', status=200)
+
+    @http.route('/shopify/webhooks/orders/cancelled',
+                type='http', auth='public', csrf=False, methods=['POST'])
+    def orders_cancelled(self, **kwargs):
+        """Shopify bestelling geannuleerd."""
+        try:
+            data = request.httprequest.data
+            hmac_header = request.httprequest.headers.get('X-Shopify-Hmac-Sha256', '')
+
+            if not self._verify_webhook(data, hmac_header):
+                _logger.warning("Webhook HMAC verificatie mislukt voor orders/cancelled")
+                return request.make_response('Unauthorized', status=401)
+
+            order_data = json.loads(data)
+            shopify_order_id = str(order_data.get('id', ''))
+
+            # Zoek bestaande order in Odoo
+            order = request.env['sale.order'].sudo().search([
+                ('shopify_order_id', '=', shopify_order_id)
+            ], limit=1)
+
+            if order:
+                order.sudo().write({
+                    'shopify_financial_status': 'cancelled',
+                    'shopify_fulfillment_status': 'cancelled',
+                })
+                # Annuleer de order in Odoo als die nog in concept staat
+                if order.state == 'draft':
+                    order.sudo().action_cancel()
+                _logger.info(f"Bestelling {order.name} geannuleerd via Shopify webhook")
+
+            return request.make_response('OK', status=200)
+        except Exception as e:
+            _logger.error(f"orders/cancelled webhook fout: {e}")
             return request.make_response('OK', status=200)
