@@ -142,3 +142,32 @@ class ShopifyWebhookController(http.Controller):
         except Exception as e:
             _logger.error(f"app/uninstalled fout: {e}")
             return request.make_response('OK', status=200)
+
+    @http.route('/shopify/webhooks/orders/create',
+                type='http', auth='public', csrf=False, methods=['POST'])
+    def orders_create(self, **kwargs):
+        """Real-time import van nieuwe Shopify bestelling."""
+        try:
+            data = request.httprequest.data
+            hmac_header = request.httprequest.headers.get('X-Shopify-Hmac-Sha256', '')
+
+            if not self._verify_webhook(data, hmac_header):
+                _logger.warning("Webhook HMAC verificatie mislukt voor orders/create")
+                return request.make_response('Unauthorized', status=401)
+
+            order_data = json.loads(data)
+            shop_domain = request.httprequest.headers.get('X-Shopify-Shop-Domain', '')
+            shop_name = shop_domain.replace('.myshopify.com', '')
+
+            config = request.env['shopify.config'].sudo().search([
+                ('shop_name', '=', shop_name)
+            ], limit=1)
+
+            if config:
+                request.env['shopify.order.import'].sudo()._import_order(order_data, config)
+                _logger.info(f"Bestelling {order_data.get('order_number')} real-time geïmporteerd")
+
+            return request.make_response('OK', status=200)
+        except Exception as e:
+            _logger.error(f"orders/create webhook fout: {e}")
+            return request.make_response('OK', status=200)
