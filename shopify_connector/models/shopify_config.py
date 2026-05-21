@@ -41,8 +41,13 @@ class ShopifyConfig(models.Model):
         help='Welke prijslijst wordt gebruikt voor de prijs naar Shopify. Leeg = standaard verkoopprijs.',
     )
     shopify_location_id = fields.Char(
-        string='Shopify Locatie ID',
-        help='Wordt automatisch opgehaald bij verbinding.',
+        string='Standaard Shopify Locatie ID',
+        help='Fallback locatie als geen mapping beschikbaar is.',
+    )
+    location_ids = fields.One2many(
+        'shopify.location',
+        'config_id',
+        string='Locaties',
     )
     published_scope = fields.Selection([
         ('web', 'Alleen webshop'),
@@ -68,21 +73,46 @@ class ShopifyConfig(models.Model):
             else:
                 rec.shop_url = False
 
-    def _fetch_location_id(self):
-        """Haal de eerste actieve Shopify locatie op."""
+    def _fetch_locations(self):
+        """Haal alle actieve Shopify locaties op en sla op als mapping."""
         try:
             url = f"{self.shop_url}/admin/api/2025-01/locations.json"
             response = requests.get(url, headers=self._get_headers(), timeout=10)
             if response.status_code == 200:
                 locations = response.json().get('locations', [])
-                active = [l for l in locations if l.get('active')]
-                if active:
-                    self.shopify_location_id = str(active[0]['id'])
-                    _logger.info(f"Locatie ID opgehaald: {self.shopify_location_id}")
-                    return self.shopify_location_id
+                # Haal standaard magazijn op
+                default_warehouse = self.env['stock.warehouse'].search([], limit=1)
+
+                for location in locations:
+                    if not location.get('active'):
+                        continue
+                    # Sla locatie op als die nog niet bestaat
+                    existing = self.env['shopify.location'].search([
+                        ('config_id', '=', self.id),
+                        ('shopify_location_id', '=', str(location['id'])),
+                    ], limit=1)
+                    if not existing:
+                        self.env['shopify.location'].create({
+                            'config_id': self.id,
+                            'shopify_location_id': str(location['id']),
+                            'shopify_location_name': location.get('name', ''),
+                            'warehouse_id': default_warehouse.id if default_warehouse else False,
+                            'active': True,
+                        })
+                        _logger.info(f"Locatie aangemaakt: {location.get('name')}")
+
+                # Sla eerste locatie op als standaard
+                if locations:
+                    active_locations = [l for l in locations if l.get('active')]
+                    if active_locations:
+                        self.shopify_location_id = str(active_locations[0]['id'])
+
         except Exception as e:
-            _logger.error(f"Locatie ophalen mislukt: {e}")
-        return False
+            _logger.error(f"Locaties ophalen mislukt: {e}")
+
+    def _fetch_location_id(self):
+        """Haal de eerste actieve Shopify locatie op — fallback methode."""
+        self._fetch_locations()
 
     def _register_webhooks(self):
         """Registreer webhooks bij Shopify."""
@@ -124,6 +154,21 @@ class ShopifyConfig(models.Model):
                     _logger.warning(f"Webhook registratie mislukt: {response.text[:200]}")
             except Exception as e:
                 _logger.error(f"Webhook registratie fout: {e}")
+
+    def action_fetch_locations(self):
+        """Knop om locaties handmatig op te halen."""
+        self.ensure_one()
+        self._fetch_locations()
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': 'Locaties opgehaald!',
+                'message': f"{len(self.location_ids)} locaties beschikbaar.",
+                'type': 'success',
+                'sticky': False,
+            }
+        }
 
     def _get_valid_token(self):
         """Geeft een geldig access token terug, vernieuwt indien nodig."""
@@ -208,7 +253,7 @@ class ShopifyConfig(models.Model):
                 if token_data.get('expires_in'):
                     vals['access_token_expires_at'] = datetime.utcnow() + timedelta(seconds=token_data['expires_in'])
                 self.write(vals)
-                self._fetch_location_id()
+                self._fetch_locations()
                 self._register_webhooks()
                 return True
             else:
@@ -268,8 +313,8 @@ class ShopifyConfig(models.Model):
             if response.status_code == 200:
                 shop_data = response.json().get('shop', {})
                 self.state = 'connected'
-                if not self.shopify_location_id:
-                    self._fetch_location_id()
+                if not self.location_ids:
+                    self._fetch_locations()
                 return {
                     'type': 'ir.actions.client',
                     'tag': 'display_notification',
