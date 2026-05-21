@@ -16,6 +16,9 @@
                     <button name="action_import_orders"
                             string="Importeer bestellingen"
                             type="object"/>
+                    <button name="action_fetch_locations"
+                            string="Locaties ophalen"
+                            type="object"/>
                     <field name="state" widget="statusbar"
                            statusbar_visible="draft,connected"/>
                 </header>
@@ -38,11 +41,25 @@
                         <field name="pricelist_id"/>
                         <field name="published_scope"/>
                     </group>
-                    <group string="Laatste synchronisaties">
-                        <field name="last_order_sync" readonly="1"/>
-                        <field name="last_product_sync" readonly="1"/>
-                        <field name="last_inventory_sync" readonly="1"/>
-                    </group>
+                    <notebook>
+                        <page string="Locaties" name="locations">
+                            <field name="location_ids">
+                                <list editable="bottom">
+                                    <field name="shopify_location_name" readonly="1"/>
+                                    <field name="shopify_location_id" readonly="1"/>
+                                    <field name="warehouse_id"/>
+                                    <field name="active"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Laatste synchronisaties" name="sync_info">
+                            <group>
+                                <field name="last_order_sync" readonly="1"/>
+                                <field name="last_product_sync" readonly="1"/>
+                                <field name="last_inventory_sync" readonly="1"/>
+                            </group>
+                        </page>
+                    </notebook>
                 </sheet>
             </form>
         </field>
@@ -63,33 +80,18 @@
         </field>
     </record>
 
-    <!-- Bestellingen overzicht -->
     <record id="action_shopify_orders" model="ir.actions.act_window">
         <field name="name">Shopify Bestellingen</field>
         <field name="res_model">sale.order</field>
         <field name="view_mode">list,form</field>
         <field name="domain">[('shopify_order_id', '!=', False)]</field>
-        <field name="context">{'search_default_shopify_orders': 1}</field>
     </record>
 
-    <!-- Klanten overzicht -->
     <record id="action_shopify_customers" model="ir.actions.act_window">
         <field name="name">Shopify Klanten</field>
         <field name="res_model">res.partner</field>
         <field name="view_mode">list,form</field>
         <field name="domain">[('shopify_customer_id', '!=', False)]</field>
-    </record>
-
-    <!-- Shopify bestellingen list view -->
-    <record id="view_shopify_orders_list" model="ir.ui.view">
-        <field name="name">sale.order.shopify.list</field>
-        <field name="model">sale.order</field>
-        <field name="inherit_id" ref="sale.view_quotation_tree_with_onboarding"/>
-        <field name="arch" type="xml">
-            <list position="attributes">
-                <attribute name="decoration-info">shopify_order_id != False and state == 'draft'</attribute>
-            </list>
-        </field>
     </record>
 
     <record id="action_shopify_config" model="ir.actions.act_window">
@@ -98,7 +100,6 @@
         <field name="view_mode">list,form</field>
     </record>
 
-    <!-- Menu structuur -->
     <menuitem id="menu_shopify_root" name="Shopify" sequence="50"/>
     <menuitem id="menu_shopify_config" name="Instellingen" parent="menu_shopify_root"
               action="action_shopify_config" sequence="10"/>
