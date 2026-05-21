@@ -92,6 +92,10 @@ class ShopifyConfig(models.Model):
                 'topic': 'app/uninstalled',
                 'address': f"{base_url}/shopify/webhooks/app/uninstalled",
             },
+            {
+                'topic': 'orders/create',
+                'address': f"{base_url}/shopify/webhooks/orders/create",
+            },
         ]
         for webhook in webhooks:
             try:
