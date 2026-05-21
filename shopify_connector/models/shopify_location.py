@@ -1,4 +1,5 @@
 from odoo import models, fields, api
+from odoo.exceptions import ValidationError
 import requests
 import logging
 
@@ -33,3 +34,21 @@ class ShopifyLocation(models.Model):
         default=True,
         help='Als aangevinkt wordt de voorraad van dit magazijn naar deze locatie gesynchroniseerd.',
     )
+
+    @api.constrains('warehouse_id', 'config_id', 'active')
+    def _check_unique_warehouse(self):
+        for record in self:
+            if not record.warehouse_id or not record.active:
+                continue
+            duplicate = self.search([
+                ('config_id', '=', record.config_id.id),
+                ('warehouse_id', '=', record.warehouse_id.id),
+                ('active', '=', True),
+                ('id', '!=', record.id),
+            ])
+            if duplicate:
+                raise ValidationError(
+                    f"Magazijn '{record.warehouse_id.name}' is al gekoppeld aan "
+                    f"locatie '{duplicate.shopify_location_name}'. "
+                    f"Elk magazijn mag maar aan één Shopify locatie gekoppeld zijn."
+                )
