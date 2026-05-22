@@ -9,7 +9,7 @@ class StockQuant(models.Model):
 
     def write(self, vals):
         result = super().write(vals)
-        if 'quantity' in vals:
+        if 'quantity' in vals or 'reserved_quantity' in vals:
             try:
                 products = self.mapped('product_id.product_tmpl_id')
                 for product in products.filtered(
@@ -46,23 +46,26 @@ class SaleOrder(models.Model):
 
     def action_confirm(self):
         result = super().action_confirm()
-        self._set_products_pending()
+        self._sync_inventory_direct()
         return result
 
     def action_cancel(self):
         result = super().action_cancel()
-        self._set_products_pending()
+        self._sync_inventory_direct()
         return result
 
-    def _set_products_pending(self):
-        """Zet betrokken producten op pending voor Shopify sync."""
+    def _sync_inventory_direct(self):
+        """Sync voorraad direct naar Shopify zonder pending."""
         try:
-            products = self.order_line.mapped('product_id.product_tmpl_id')
-            for product in products.filtered(
-                lambda p: p.shopify_product_id and p.shopify_published
-            ):
-                product.with_context(no_sync_trigger=True).write({
-                    'shopify_sync_status': 'pending'
-                })
+            config = self.env['shopify.config'].search([
+                ('state', '=', 'connected'),
+                ('sync_inventory', '=', True),
+            ], limit=1)
+            if config:
+                products = self.order_line.mapped('product_id.product_tmpl_id')
+                for product in products.filtered(
+                    lambda p: p.shopify_product_id and p.shopify_published
+                ):
+                    self.env['shopify.sync'].sync_inventory_to_shopify(product.id, config)
         except Exception as e:
-            _logger.error(f"Producten pending zetten mislukt: {e}")
+            _logger.error(f"Directe voorraad sync mislukt: {e}")
