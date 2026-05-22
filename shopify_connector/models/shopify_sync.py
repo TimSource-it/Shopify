@@ -62,6 +62,17 @@ class ShopifySync(models.AbstractModel):
         return ''
 
     @api.model
+    def _get_shopify_sellable_qty(self, variant, warehouse):
+        """Haal verkoopbare voorraad op — fysiek minus gereserveerd."""
+        location = warehouse.lot_stock_id
+        quants = self.env['stock.quant'].search([
+            ('product_id', '=', variant.id),
+            ('location_id', '=', location.id),
+        ])
+        qty = sum(quants.mapped('available_quantity'))
+        return max(0, int(qty))
+
+    @api.model
     def sync_inventory_to_shopify(self, product_tmpl_id, config=None):
         """Synchroniseer voorraad van Odoo naar Shopify per locatie mapping."""
         if not config:
@@ -101,7 +112,7 @@ class ShopifySync(models.AbstractModel):
                 if not variant.shopify_inventory_item_id:
                     continue
                 try:
-                    qty = int(variant.qty_available)
+                    qty = max(0, int(variant.qty_available))
                     url = f"{config.shop_url}/admin/api/2025-01/inventory_levels/set.json"
                     response = requests.post(
                         url,
@@ -128,16 +139,7 @@ class ShopifySync(models.AbstractModel):
                 if not variant.shopify_inventory_item_id:
                     continue
                 try:
-                    # Haal voorraad op van gekoppeld magazijn
-                    if mapping.warehouse_id:
-                        location = mapping.warehouse_id.lot_stock_id
-                        quant = self.env['stock.quant'].search([
-                            ('product_id', '=', variant.id),
-                            ('location_id', '=', location.id),
-                        ])
-                        qty = int(sum(quant.mapped('quantity')))
-                    else:
-                        qty = int(variant.qty_available)
+                    qty = self._get_shopify_sellable_qty(variant, mapping.warehouse_id)
 
                     url = f"{config.shop_url}/admin/api/2025-01/inventory_levels/set.json"
                     response = requests.post(
