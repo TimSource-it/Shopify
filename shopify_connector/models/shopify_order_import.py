@@ -17,40 +17,114 @@ class ShopifyOrderImport(models.AbstractModel):
         return self.env['shopify.config'].search(domain, limit=1)
 
     @api.model
+    def _should_confirm_order(self, config, financial_status):
+        """Bepaal of de order bevestigd moet worden op basis van de instelling."""
+        if config.confirm_order_on == 'always':
+            return True
+        if config.confirm_order_on == 'never':
+            return False
+        if config.confirm_order_on == 'paid':
+            return financial_status == 'paid'
+        if config.confirm_order_on == 'authorized':
+            return financial_status in ('paid', 'authorized')
+        return False
+
+    @api.model
+    def _create_invoice(self, order, config):
+        """Maak een factuur aan voor de order."""
+        if not config._account_available():
+            return False
+        if config.invoice_policy == 'never':
+            return False
+        try:
+            # Maak factuur aan
+            invoice = order._create_invoices()
+            if not invoice:
+                return False
+
+            # Koppel tussenrekening als beschikbaar
+            if config.account_id:
+                for line in invoice.invoice_line_ids:
+                    line.account_id = config.account_id
+
+            # Valideer factuur
+            invoice.action_post()
+
+            # Markeer als betaald via tussenrekening
+            if config.account_id:
+                self._register_payment(invoice, config)
+
+            _logger.info(f"Factuur aangemaakt voor order {order.name}")
+            return invoice
+        except Exception as e:
+            _logger.error(f"Factuur aanmaken mislukt voor {order.name}: {e}")
+            return False
+
+    @api.model
+    def _register_payment(self, invoice, config):
+        """Registreer betaling via de tussenrekening."""
+        try:
+            if not config._account_available():
+                return
+            payment_method = self.env['account.payment.method.line'].search([
+                ('payment_type', '=', 'inbound'),
+                ('journal_id.type', 'in', ['bank', 'cash']),
+            ], limit=1)
+
+            if not payment_method:
+                return
+
+            payment_vals = {
+                'amount': invoice.amount_total,
+                'payment_type': 'inbound',
+                'partner_type': 'customer',
+                'partner_id': invoice.partner_id.id,
+                'journal_id': payment_method.journal_id.id,
+                'payment_method_line_id': payment_method.id,
+                'ref': invoice.name,
+            }
+            payment = self.env['account.payment'].create(payment_vals)
+            payment.action_post()
+
+            # Koppel betaling aan factuur
+            lines = payment.line_ids.filtered(
+                lambda l: l.account_id == invoice.account_id
+            )
+            invoice.js_assign_outstanding_line(lines.id)
+            _logger.info(f"Betaling geregistreerd voor {invoice.name}")
+        except Exception as e:
+            _logger.error(f"Betaling registreren mislukt: {e}")
+
+    @api.model
     def _get_or_create_partner(self, customer_data, shipping_address=None):
         """Zoek of maak een klant aan in Odoo."""
         if not customer_data:
-            return self.env['res.partner'].browse(1)  # Gebruik standaard klant
+            return self.env['res.partner'].browse(1)
 
         email = customer_data.get('email', '')
         name = f"{customer_data.get('first_name', '')} {customer_data.get('last_name', '')}".strip()
         shopify_customer_id = str(customer_data.get('id', ''))
 
-        # Zoek op Shopify klant ID
         partner = self.env['res.partner'].search([
             ('shopify_customer_id', '=', shopify_customer_id)
         ], limit=1)
 
         if not partner and email:
-            # Zoek op email
             partner = self.env['res.partner'].search([
                 ('email', '=', email)
             ], limit=1)
 
         if not partner:
-            # Maak nieuwe klant aan
             vals = {
                 'name': name or email or 'Shopify Klant',
                 'email': email,
                 'shopify_customer_id': shopify_customer_id,
                 'customer_rank': 1,
             }
-            # Telefoon
             phone = customer_data.get('phone', '')
             if phone:
                 vals['phone'] = phone
 
-            # Adres
             address = shipping_address or customer_data.get('default_address', {})
             if address:
                 vals['street'] = address.get('address1', '')
@@ -68,7 +142,6 @@ class ShopifyOrderImport(models.AbstractModel):
             partner = self.env['res.partner'].create(vals)
             _logger.info(f"Nieuwe klant aangemaakt: {partner.name}")
         else:
-            # Update Shopify klant ID als nog niet bekend
             if not partner.shopify_customer_id:
                 partner.shopify_customer_id = shopify_customer_id
 
@@ -88,13 +161,25 @@ class ShopifyOrderImport(models.AbstractModel):
         """Importeer een enkele Shopify bestelling als verkooporder."""
         shopify_order_id = str(order_data.get('id', ''))
         shopify_order_number = order_data.get('order_number', '')
+        financial_status = order_data.get('financial_status', '')
+        fulfillment_status = order_data.get('fulfillment_status', '') or 'unfulfilled'
 
         # Check of bestelling al bestaat
         existing = self.env['sale.order'].search([
             ('shopify_order_id', '=', shopify_order_id)
         ], limit=1)
         if existing:
-            _logger.info(f"Bestelling {shopify_order_number} bestaat al, overgeslagen")
+            # Update bestaande order status
+            existing.write({
+                'shopify_financial_status': financial_status,
+                'shopify_fulfillment_status': fulfillment_status,
+            })
+            # Controleer of order alsnog bevestigd moet worden
+            if existing.state == 'draft' and self._should_confirm_order(config, financial_status):
+                existing.action_confirm()
+                if config.invoice_policy == 'on_confirm':
+                    self._create_invoice(existing, config)
+            _logger.info(f"Bestelling {shopify_order_number} bijgewerkt")
             return existing
 
         # Haal klant op
@@ -107,8 +192,8 @@ class ShopifyOrderImport(models.AbstractModel):
             'partner_id': partner.id,
             'shopify_order_id': shopify_order_id,
             'shopify_order_number': str(shopify_order_number),
-            'shopify_financial_status': order_data.get('financial_status', ''),
-            'shopify_fulfillment_status': order_data.get('fulfillment_status', '') or 'unfulfilled',
+            'shopify_financial_status': financial_status,
+            'shopify_fulfillment_status': fulfillment_status,
             'client_order_ref': f"Shopify #{shopify_order_number}",
         }
 
@@ -130,7 +215,6 @@ class ShopifyOrderImport(models.AbstractModel):
                 line_vals['product_id'] = product.id
                 line_vals['name'] = product.name
             else:
-                # Gebruik generiek product als variant niet gevonden
                 generic = self.env['product.product'].search([
                     ('default_code', '=', 'SHOPIFY-GENERIC')
                 ], limit=1)
@@ -143,10 +227,50 @@ class ShopifyOrderImport(models.AbstractModel):
                 line_vals['product_id'] = generic.id
                 line_vals['name'] = line.get('title', 'Onbekend product')
 
+            # Voeg BTW toe als beschikbaar
+            if config.tax_id and config._account_available():
+                line_vals['tax_id'] = [(6, 0, [config.tax_id.id])]
+
             self.env['sale.order.line'].create(line_vals)
+
+        # Bevestig order op basis van instelling
+        if self._should_confirm_order(config, financial_status):
+            order.action_confirm()
+            _logger.info(f"Order {shopify_order_number} automatisch bevestigd")
+
+            # Maak factuur aan op basis van instelling
+            if config.invoice_policy == 'on_confirm':
+                self._create_invoice(order, config)
 
         _logger.info(f"Bestelling {shopify_order_number} geïmporteerd als {order.name}")
         return order
+
+    @api.model
+    def _process_refund(self, order, config):
+        """Verwerk een terugbetaling op basis van de instelling."""
+        if config.refund_policy == 'manual':
+            _logger.info(f"Retour voor {order.name} moet handmatig verwerkt worden")
+            return
+
+        if config.refund_policy == 'cancel':
+            if order.state not in ('done', 'cancel'):
+                order.action_cancel()
+                _logger.info(f"Order {order.name} geannuleerd wegens terugbetaling")
+            return
+
+        if config.refund_policy == 'credit_note':
+            if not config._account_available():
+                return
+            try:
+                invoices = order.invoice_ids.filtered(
+                    lambda i: i.state == 'posted' and i.move_type == 'out_invoice'
+                )
+                for invoice in invoices:
+                    refund = invoice._reverse_moves()
+                    refund.action_post()
+                    _logger.info(f"Credit nota aangemaakt voor {invoice.name}")
+            except Exception as e:
+                _logger.error(f"Credit nota aanmaken mislukt: {e}")
 
     @api.model
     def import_orders_from_shopify(self, config=None, since_id=None):
@@ -162,7 +286,6 @@ class ShopifyOrderImport(models.AbstractModel):
             if since_id:
                 params += f'&since_id={since_id}'
             elif config.last_order_sync:
-                # Gebruik datum van laatste sync
                 since = config.last_order_sync.strftime('%Y-%m-%dT%H:%M:%S')
                 params += f'&created_at_min={since}'
 
@@ -181,7 +304,6 @@ class ShopifyOrderImport(models.AbstractModel):
                     except Exception as e:
                         _logger.error(f"Bestelling import fout: {e}")
 
-                # Update laatste sync tijd
                 config.last_order_sync = fields.Datetime.now()
                 _logger.info(f"{imported} bestellingen geïmporteerd")
                 return imported
