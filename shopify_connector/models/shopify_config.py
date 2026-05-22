@@ -35,11 +35,14 @@ class ShopifyConfig(models.Model):
         ('error', 'Fout'),
     ], string='Status', default='draft')
 
+    # Prijslijst
     pricelist_id = fields.Many2one(
         'product.pricelist',
         string='Prijslijst voor Shopify',
         help='Welke prijslijst wordt gebruikt voor de prijs naar Shopify. Leeg = standaard verkoopprijs.',
     )
+
+    # Locaties
     shopify_location_id = fields.Char(
         string='Standaard Shopify Locatie ID',
         help='Fallback locatie als geen mapping beschikbaar is.',
@@ -49,21 +52,63 @@ class ShopifyConfig(models.Model):
         'config_id',
         string='Locaties',
     )
+
+    # Verkoopkanaal
     published_scope = fields.Selection([
         ('web', 'Alleen webshop'),
         ('global', 'Alle kanalen'),
-    ], string='Verkoopkanaal', default='global',
-        help='Bepaalt op welke verkoopkanalen producten zichtbaar zijn in Shopify.')
+    ], string='Verkoopkanaal', default='global')
 
+    # Sync instellingen
     sync_products = fields.Boolean(string='Producten synchroniseren', default=True)
     sync_orders = fields.Boolean(string='Bestellingen importeren', default=True)
     sync_inventory = fields.Boolean(string='Voorraad synchroniseren', default=True)
     sync_customers = fields.Boolean(string='Klanten synchroniseren', default=True)
     allow_backorder = fields.Boolean(string='Bestellen bij 0 voorraad', default=False)
 
+    # Order verwerking
+    confirm_order_on = fields.Selection([
+        ('paid', 'Alleen bij betaald'),
+        ('authorized', 'Bij betaald of geautoriseerd'),
+        ('always', 'Altijd bevestigen'),
+        ('never', 'Nooit automatisch bevestigen'),
+    ], string='Order bevestigen bij', default='paid',
+        help='Wanneer wordt een Shopify order automatisch bevestigd in Odoo?')
+
+    invoice_policy = fields.Selection([
+        ('on_confirm', 'Bij bevestiging'),
+        ('on_delivery', 'Bij levering'),
+        ('never', 'Nooit automatisch'),
+    ], string='Factuur aanmaken', default='on_confirm',
+        help='Wanneer wordt automatisch een factuur aangemaakt?')
+
+    refund_policy = fields.Selection([
+        ('credit_note', 'Credit nota aanmaken'),
+        ('cancel', 'Order annuleren'),
+        ('manual', 'Handmatig verwerken'),
+    ], string='Retour verwerking', default='credit_note',
+        help='Wat te doen als een Shopify order terugbetaald wordt?')
+
+    # Boekhouding — alleen beschikbaar als account module geïnstalleerd is
+    account_id = fields.Many2one(
+        'account.account',
+        string='Shopify Tussenrekening',
+        help='Grootboekrekening voor Shopify betalingen. Wordt gebruikt als tussenrekening bij facturen.',
+    )
+    tax_id = fields.Many2one(
+        'account.tax',
+        string='Standaard BTW',
+        help='Standaard BTW voor Shopify orders.',
+    )
+
+    # Laatste synchronisaties
     last_order_sync = fields.Datetime(string='Laatste bestelling sync')
     last_product_sync = fields.Datetime(string='Laatste product sync')
     last_inventory_sync = fields.Datetime(string='Laatste voorraad sync')
+
+    def _account_available(self):
+        """Controleer of de account module beschikbaar is."""
+        return 'account.account' in self.env
 
     @api.depends('shop_name')
     def _compute_shop_url(self):
@@ -81,7 +126,6 @@ class ShopifyConfig(models.Model):
             if response.status_code == 200:
                 locations = response.json().get('locations', [])
                 default_warehouse = self.env['stock.warehouse'].search([], limit=1)
-
                 active_locations = [l for l in locations if l.get('active')]
 
                 for i, location in enumerate(active_locations):
@@ -106,29 +150,16 @@ class ShopifyConfig(models.Model):
             _logger.error(f"Locaties ophalen mislukt: {e}")
 
     def _fetch_location_id(self):
-        """Fallback methode."""
         self._fetch_locations()
 
     def _register_webhooks(self):
         """Registreer webhooks bij Shopify."""
         base_url = self._get_base_url()
         webhooks = [
-            {
-                'topic': 'app/uninstalled',
-                'address': f"{base_url}/shopify/webhooks/app/uninstalled",
-            },
-            {
-                'topic': 'orders/create',
-                'address': f"{base_url}/shopify/webhooks/orders/create",
-            },
-            {
-                'topic': 'orders/updated',
-                'address': f"{base_url}/shopify/webhooks/orders/updated",
-            },
-            {
-                'topic': 'orders/cancelled',
-                'address': f"{base_url}/shopify/webhooks/orders/cancelled",
-            },
+            {'topic': 'app/uninstalled', 'address': f"{base_url}/shopify/webhooks/app/uninstalled"},
+            {'topic': 'orders/create', 'address': f"{base_url}/shopify/webhooks/orders/create"},
+            {'topic': 'orders/updated', 'address': f"{base_url}/shopify/webhooks/orders/updated"},
+            {'topic': 'orders/cancelled', 'address': f"{base_url}/shopify/webhooks/orders/cancelled"},
         ]
         for webhook in webhooks:
             try:
@@ -151,7 +182,6 @@ class ShopifyConfig(models.Model):
                 _logger.error(f"Webhook registratie fout: {e}")
 
     def action_fetch_locations(self):
-        """Knop om locaties handmatig op te halen."""
         self.ensure_one()
         self._fetch_locations()
         return {
@@ -163,7 +193,6 @@ class ShopifyConfig(models.Model):
         }
 
     def _get_valid_token(self):
-        """Geeft een geldig access token terug, vernieuwt indien nodig."""
         if self.access_token_expires_at:
             if datetime.utcnow() >= self.access_token_expires_at - timedelta(minutes=5):
                 _logger.info(f"Token verlopen voor {self.shop_name}, vernieuwen...")
@@ -258,7 +287,6 @@ class ShopifyConfig(models.Model):
             return False
 
     def _refresh_access_token(self):
-        """Vernieuwt het access token met het refresh token."""
         self.ensure_one()
         if not self.refresh_token:
             _logger.error(f"Geen refresh token voor {self.shop_name}")
@@ -277,9 +305,7 @@ class ShopifyConfig(models.Model):
             )
             if response.status_code == 200:
                 token_data = response.json()
-                vals = {
-                    'access_token': token_data.get('access_token'),
-                }
+                vals = {'access_token': token_data.get('access_token')}
                 if token_data.get('refresh_token'):
                     vals['refresh_token'] = token_data['refresh_token']
                 if token_data.get('expires_in'):
@@ -328,7 +354,6 @@ class ShopifyConfig(models.Model):
             raise UserError("Verbinding time-out.")
 
     def action_import_orders(self):
-        """Importeer bestellingen handmatig."""
         self.ensure_one()
         imported = self.env['shopify.order.import'].import_orders_from_shopify(self)
         if imported is not False:
