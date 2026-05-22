@@ -45,15 +45,15 @@ class ShopifyLocation(models.Model):
         for record in self:
             if not record.warehouse_id or not record.sync_inventory:
                 continue
-            duplicate = self.search([
+            duplicates = self.search([
                 ('config_id', '=', record.config_id.id),
                 ('warehouse_id', '=', record.warehouse_id.id),
                 ('sync_inventory', '=', True),
                 ('id', '!=', record.id),
             ])
-            if duplicate:
+            if duplicates:
                 raise ValidationError(
                     f"Magazijn '{record.warehouse_id.name}' is al gekoppeld aan "
-                    f"locatie '{duplicate.shopify_location_name}'. "
+                    f"een andere Shopify locatie. "
                     f"Elk magazijn mag maar aan één Shopify locatie gekoppeld zijn."
                 )
