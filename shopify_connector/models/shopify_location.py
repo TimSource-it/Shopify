@@ -42,18 +42,15 @@ class ShopifyLocation(models.Model):
 
     @api.constrains('warehouse_id', 'config_id', 'sync_inventory')
     def _check_unique_warehouse(self):
-        for record in self:
-            if not record.warehouse_id or not record.sync_inventory:
-                continue
-            duplicates = self.search([
-                ('config_id', '=', record.config_id.id),
-                ('warehouse_id', '=', record.warehouse_id.id),
+        configs = self.mapped('config_id')
+        for config in configs:
+            all_locations = self.search([
+                ('config_id', '=', config.id),
                 ('sync_inventory', '=', True),
-                ('id', '!=', record.id),
+                ('warehouse_id', '!=', False),
             ])
-            if duplicates:
+            warehouse_ids = all_locations.mapped('warehouse_id').ids
+            if len(warehouse_ids) != len(set(warehouse_ids)):
                 raise ValidationError(
-                    f"Magazijn '{record.warehouse_id.name}' is al gekoppeld aan "
-                    f"een andere Shopify locatie. "
-                    f"Elk magazijn mag maar aan één Shopify locatie gekoppeld zijn."
+                    "Elk magazijn mag maar aan één Shopify locatie gekoppeld zijn."
                 )
