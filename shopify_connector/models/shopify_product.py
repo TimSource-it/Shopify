@@ -38,6 +38,11 @@ class ProductTemplate(models.Model):
         help='Specifieke beschrijving voor Shopify. Leeg = website beschrijving of verkoopbeschrijving.',
         copy=False,
     )
+    shopify_inventory_html = fields.Html(
+        string='Shopify Voorraad',
+        compute='_compute_shopify_inventory_html',
+        sanitize=False,
+    )
 
     def write(self, vals):
         result = super().write(vals)
@@ -55,6 +60,60 @@ class ProductTemplate(models.Model):
                     'shopify_sync_status': 'pending'
                 })
         return result
+
+    def _get_shopify_inventory_lines(self):
+        """Haal voorraad per Shopify locatie mapping op."""
+        result = []
+        config = self.env['shopify.config'].search([
+            ('state', '=', 'connected')
+        ], limit=1)
+        if not config:
+            return result
+
+        location_mappings = self.env['shopify.location'].search([
+            ('config_id', '=', config.id),
+            ('sync_inventory', '=', True),
+            ('warehouse_id', '!=', False),
+        ])
+
+        for mapping in location_mappings:
+            qty = 0
+            for variant in self.product_variant_ids:
+                location = mapping.warehouse_id.lot_stock_id
+                quants = self.env['stock.quant'].search([
+                    ('product_id', '=', variant.id),
+                    ('location_id', '=', location.id),
+                ])
+                qty += sum(quants.mapped('available_quantity'))
+            result.append({
+                'location_name': mapping.shopify_location_name,
+                'warehouse_name': mapping.warehouse_id.name,
+                'qty': max(0, int(qty)),
+            })
+        return result
+
+    @api.depends('product_variant_ids', 'shopify_published')
+    def _compute_shopify_inventory_html(self):
+        for product in self:
+            lines = product._get_shopify_inventory_lines()
+            if not lines:
+                product.shopify_inventory_html = '<p>Geen locatie mapping geconfigureerd.</p>'
+                continue
+
+            html = '<table style="width:100%; border-collapse:collapse;">'
+            html += '<tr style="background:#f5f5f5; font-weight:bold;">'
+            html += '<td style="padding:8px; border:1px solid #ddd;">Shopify Locatie</td>'
+            html += '<td style="padding:8px; border:1px solid #ddd;">Odoo Magazijn</td>'
+            html += '<td style="padding:8px; border:1px solid #ddd;">Verkoopbare voorraad</td>'
+            html += '</tr>'
+            for line in lines:
+                html += '<tr>'
+                html += f'<td style="padding:8px; border:1px solid #ddd;">{line["location_name"]}</td>'
+                html += f'<td style="padding:8px; border:1px solid #ddd;">{line["warehouse_name"]}</td>'
+                html += f'<td style="padding:8px; border:1px solid #ddd;">{line["qty"]}</td>'
+                html += '</tr>'
+            html += '</table>'
+            product.shopify_inventory_html = html
 
     def action_sync_to_shopify(self):
         """Synchroniseer dit product naar Shopify."""
@@ -112,37 +171,6 @@ class ProductTemplate(models.Model):
                 'sticky': True,
             }
         }
-
-    def _get_shopify_inventory_lines(self):
-        """Haal voorraad per Shopify locatie mapping op."""
-        result = []
-        config = self.env['shopify.config'].search([
-            ('state', '=', 'connected')
-        ], limit=1)
-        if not config:
-            return result
-
-        location_mappings = self.env['shopify.location'].search([
-            ('config_id', '=', config.id),
-            ('sync_inventory', '=', True),
-            ('warehouse_id', '!=', False),
-        ])
-
-        for mapping in location_mappings:
-            qty = 0
-            for variant in self.product_variant_ids:
-                location = mapping.warehouse_id.lot_stock_id
-                quants = self.env['stock.quant'].search([
-                    ('product_id', '=', variant.id),
-                    ('location_id', '=', location.id),
-                ])
-                qty += sum(quants.mapped('available_quantity'))
-            result.append({
-                'location_name': mapping.shopify_location_name,
-                'warehouse_name': mapping.warehouse_id.name,
-                'qty': max(0, int(qty)),
-            })
-        return result
 
 
 class ProductProduct(models.Model):
