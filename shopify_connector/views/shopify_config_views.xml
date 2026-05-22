@@ -48,8 +48,7 @@
                             <field name="refund_policy"/>
                         </group>
                     </group>
-                    <group string="Boekhouding"
-                           invisible="not account_id and not tax_id">
+                    <group string="Boekhouding">
                         <field name="account_id"/>
                         <field name="tax_id"/>
                     </group>
