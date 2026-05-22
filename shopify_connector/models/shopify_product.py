@@ -41,7 +41,6 @@ class ProductTemplate(models.Model):
 
     def write(self, vals):
         result = super().write(vals)
-        # Zet op pending als relevant veld gewijzigd is
         sync_fields = {
             'name', 'description_sale', 'shopify_description',
             'list_price', 'shopify_tags', 'categ_id',
@@ -113,6 +112,37 @@ class ProductTemplate(models.Model):
                 'sticky': True,
             }
         }
+
+    def _get_shopify_inventory_lines(self):
+        """Haal voorraad per Shopify locatie mapping op."""
+        result = []
+        config = self.env['shopify.config'].search([
+            ('state', '=', 'connected')
+        ], limit=1)
+        if not config:
+            return result
+
+        location_mappings = self.env['shopify.location'].search([
+            ('config_id', '=', config.id),
+            ('sync_inventory', '=', True),
+            ('warehouse_id', '!=', False),
+        ])
+
+        for mapping in location_mappings:
+            qty = 0
+            for variant in self.product_variant_ids:
+                location = mapping.warehouse_id.lot_stock_id
+                quants = self.env['stock.quant'].search([
+                    ('product_id', '=', variant.id),
+                    ('location_id', '=', location.id),
+                ])
+                qty += sum(quants.mapped('available_quantity'))
+            result.append({
+                'location_name': mapping.shopify_location_name,
+                'warehouse_name': mapping.warehouse_id.name,
+                'qty': max(0, int(qty)),
+            })
+        return result
 
 
 class ProductProduct(models.Model):
