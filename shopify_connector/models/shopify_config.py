@@ -35,14 +35,11 @@ class ShopifyConfig(models.Model):
         ('error', 'Fout'),
     ], string='Status', default='draft')
 
-    # Prijslijst
     pricelist_id = fields.Many2one(
         'product.pricelist',
         string='Prijslijst voor Shopify',
         help='Welke prijslijst wordt gebruikt voor de prijs naar Shopify. Leeg = standaard verkoopprijs.',
     )
-
-    # Locaties
     shopify_location_id = fields.Char(
         string='Standaard Shopify Locatie ID',
         help='Fallback locatie als geen mapping beschikbaar is.',
@@ -52,48 +49,40 @@ class ShopifyConfig(models.Model):
         'config_id',
         string='Locaties',
     )
-
-    # Verkoopkanaal
     published_scope = fields.Selection([
         ('web', 'Alleen webshop'),
         ('global', 'Alle kanalen'),
     ], string='Verkoopkanaal', default='global')
 
-    # Sync instellingen
     sync_products = fields.Boolean(string='Producten synchroniseren', default=True)
     sync_orders = fields.Boolean(string='Bestellingen importeren', default=True)
     sync_inventory = fields.Boolean(string='Voorraad synchroniseren', default=True)
     sync_customers = fields.Boolean(string='Klanten synchroniseren', default=True)
     allow_backorder = fields.Boolean(string='Bestellen bij 0 voorraad', default=False)
 
-    # Order verwerking
     confirm_order_on = fields.Selection([
         ('paid', 'Alleen bij betaald'),
         ('authorized', 'Bij betaald of geautoriseerd'),
         ('always', 'Altijd bevestigen'),
         ('never', 'Nooit automatisch bevestigen'),
-    ], string='Order bevestigen bij', default='paid',
-        help='Wanneer wordt een Shopify order automatisch bevestigd in Odoo?')
+    ], string='Order bevestigen bij', default='paid')
 
     invoice_policy = fields.Selection([
         ('on_confirm', 'Bij bevestiging'),
         ('on_delivery', 'Bij levering'),
         ('never', 'Nooit automatisch'),
-    ], string='Factuur aanmaken', default='on_confirm',
-        help='Wanneer wordt automatisch een factuur aangemaakt?')
+    ], string='Factuur aanmaken', default='on_confirm')
 
     refund_policy = fields.Selection([
         ('credit_note', 'Credit nota aanmaken'),
         ('cancel', 'Order annuleren'),
         ('manual', 'Handmatig verwerken'),
-    ], string='Retour verwerking', default='credit_note',
-        help='Wat te doen als een Shopify order terugbetaald wordt?')
+    ], string='Retour verwerking', default='credit_note')
 
-    # Boekhouding — alleen beschikbaar als account module geïnstalleerd is
     account_id = fields.Many2one(
         'account.account',
         string='Shopify Tussenrekening',
-        help='Grootboekrekening voor Shopify betalingen. Wordt gebruikt als tussenrekening bij facturen.',
+        help='Grootboekrekening voor Shopify betalingen.',
     )
     tax_id = fields.Many2one(
         'account.tax',
@@ -101,7 +90,6 @@ class ShopifyConfig(models.Model):
         help='Standaard BTW voor Shopify orders.',
     )
 
-    # Laatste synchronisaties
     last_order_sync = fields.Datetime(string='Laatste bestelling sync')
     last_product_sync = fields.Datetime(string='Laatste product sync')
     last_inventory_sync = fields.Datetime(string='Laatste voorraad sync')
@@ -117,6 +105,62 @@ class ShopifyConfig(models.Model):
                 rec.shop_url = f"https://{rec.shop_name}.myshopify.com"
             else:
                 rec.shop_url = False
+
+    def action_set_accounting_defaults(self):
+        """Stel standaard boekhouding instellingen in."""
+        self.ensure_one()
+        vals = {}
+
+        if not self.account_id and self._account_available():
+            existing = self.env['account.account'].search([
+                ('name', '=', 'Shopify Betalingen'),
+                ('company_id', '=', self.env.company.id),
+            ], limit=1)
+            if not existing:
+                try:
+                    existing = self.env['account.account'].create({
+                        'name': 'Shopify Betalingen',
+                        'code': '13000',
+                        'account_type': 'asset_current',
+                        'company_id': self.env.company.id,
+                    })
+                except Exception as e:
+                    _logger.error(f"Tussenrekening aanmaken mislukt: {e}")
+            if existing:
+                vals['account_id'] = existing.id
+
+        if not self.tax_id and self._account_available():
+            tax = self.env['account.tax'].search([
+                ('type_tax_use', '=', 'sale'),
+                ('company_id', '=', self.env.company.id),
+                ('active', '=', True),
+            ], limit=1)
+            if tax:
+                vals['tax_id'] = tax.id
+
+        if vals:
+            self.write(vals)
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': 'Standaard instellingen ingesteld!',
+                    'message': 'Boekhouding defaults zijn automatisch ingesteld.',
+                    'type': 'success',
+                    'sticky': False,
+                }
+            }
+        else:
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': 'Geen wijzigingen',
+                    'message': 'Instellingen waren al ingevuld of konden niet worden aangemaakt.',
+                    'type': 'warning',
+                    'sticky': False,
+                }
+            }
 
     def _fetch_locations(self):
         """Haal alle actieve Shopify locaties op en sla op als mapping."""
