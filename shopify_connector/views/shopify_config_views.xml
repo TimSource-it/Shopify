@@ -51,6 +51,11 @@
                     <group string="Boekhouding">
                         <field name="account_id"/>
                         <field name="tax_id"/>
+                        <button name="action_set_accounting_defaults"
+                                string="Standaard instellingen laden"
+                                type="object"
+                                class="btn-secondary"
+                                invisible="account_id and tax_id"/>
                     </group>
                     <notebook>
                         <page string="Locaties" name="locations">
