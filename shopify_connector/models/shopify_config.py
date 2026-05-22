@@ -114,7 +114,6 @@ class ShopifyConfig(models.Model):
         if not self.account_id and self._account_available():
             existing = self.env['account.account'].search([
                 ('name', '=', 'Shopify Betalingen'),
-                ('company_id', '=', self.env.company.id),
             ], limit=1)
             if not existing:
                 try:
@@ -122,7 +121,6 @@ class ShopifyConfig(models.Model):
                         'name': 'Shopify Betalingen',
                         'code': '13000',
                         'account_type': 'asset_current',
-                        'company_id': self.env.company.id,
                     })
                 except Exception as e:
                     _logger.error(f"Tussenrekening aanmaken mislukt: {e}")
@@ -132,7 +130,6 @@ class ShopifyConfig(models.Model):
         if not self.tax_id and self._account_available():
             tax = self.env['account.tax'].search([
                 ('type_tax_use', '=', 'sale'),
-                ('company_id', '=', self.env.company.id),
                 ('active', '=', True),
             ], limit=1)
             if tax:
