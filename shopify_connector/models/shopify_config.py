@@ -82,9 +82,9 @@ class ShopifyConfig(models.Model):
                 locations = response.json().get('locations', [])
                 default_warehouse = self.env['stock.warehouse'].search([], limit=1)
 
-                for location in locations:
-                    if not location.get('active'):
-                        continue
+                active_locations = [l for l in locations if l.get('active')]
+
+                for i, location in enumerate(active_locations):
                     existing = self.env['shopify.location'].search([
                         ('config_id', '=', self.id),
                         ('shopify_location_id', '=', str(location['id'])),
@@ -94,15 +94,13 @@ class ShopifyConfig(models.Model):
                             'config_id': self.id,
                             'shopify_location_id': str(location['id']),
                             'shopify_location_name': location.get('name', ''),
-                            'warehouse_id': default_warehouse.id if default_warehouse else False,
-                            'sync_inventory': True,
+                            'warehouse_id': default_warehouse.id if (default_warehouse and i == 0) else False,
+                            'sync_inventory': i == 0,
                         })
                         _logger.info(f"Locatie aangemaakt: {location.get('name')}")
 
-                if locations:
-                    active_locations = [l for l in locations if l.get('active')]
-                    if active_locations:
-                        self.shopify_location_id = str(active_locations[0]['id'])
+                if active_locations:
+                    self.shopify_location_id = str(active_locations[0]['id'])
 
         except Exception as e:
             _logger.error(f"Locaties ophalen mislukt: {e}")
