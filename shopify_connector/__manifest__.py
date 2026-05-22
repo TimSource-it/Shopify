@@ -10,7 +10,6 @@
         'base',
         'sale_management',
         'stock',
-        'account',
         'web',
     ],
     'data': [
@@ -19,6 +18,7 @@
         'views/shopify_product_views.xml',
         'data/shopify_cron.xml',
     ],
+    'post_init_hook': 'post_init_hook',
     'installable': True,
     'application': True,
     'auto_install': False,
