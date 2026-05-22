@@ -33,13 +33,25 @@
                         <field name="access_token" password="True"/>
                     </group>
                     <group string="Synchronisatie">
-                        <field name="sync_products"/>
-                        <field name="sync_orders"/>
-                        <field name="sync_inventory"/>
-                        <field name="sync_customers"/>
-                        <field name="allow_backorder"/>
-                        <field name="pricelist_id"/>
-                        <field name="published_scope"/>
+                        <group>
+                            <field name="sync_products"/>
+                            <field name="sync_orders"/>
+                            <field name="sync_inventory"/>
+                            <field name="sync_customers"/>
+                            <field name="allow_backorder"/>
+                            <field name="pricelist_id"/>
+                            <field name="published_scope"/>
+                        </group>
+                        <group string="Order verwerking">
+                            <field name="confirm_order_on"/>
+                            <field name="invoice_policy"/>
+                            <field name="refund_policy"/>
+                        </group>
+                    </group>
+                    <group string="Boekhouding"
+                           invisible="not account_id and not tax_id">
+                        <field name="account_id"/>
+                        <field name="tax_id"/>
                     </group>
                     <notebook>
                         <page string="Locaties" name="locations">
