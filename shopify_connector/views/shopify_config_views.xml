@@ -48,7 +48,7 @@
                                     <field name="shopify_location_name" readonly="1"/>
                                     <field name="shopify_location_id" readonly="1"/>
                                     <field name="warehouse_id"/>
-                                    <field name="active"/>
+                                    <field name="sync_inventory"/>
                                 </list>
                             </field>
                         </page>
