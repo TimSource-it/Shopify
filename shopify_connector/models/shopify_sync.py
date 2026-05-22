@@ -88,14 +88,12 @@ class ShopifySync(models.AbstractModel):
         if not product.exists():
             return False
 
-        # Haal locatie mappings op
         location_mappings = self.env['shopify.location'].search([
             ('config_id', '=', config.id),
             ('sync_inventory', '=', True),
             ('warehouse_id', '!=', False),
         ])
 
-        # Fallback naar standaard locatie als geen mappings
         if not location_mappings:
             self.env.cr.execute(
                 "SELECT shopify_location_id FROM shopify_config WHERE id = %s",
@@ -132,7 +130,6 @@ class ShopifySync(models.AbstractModel):
                     _logger.error(f"Voorraad sync fout: {e}")
             return True
 
-        # Synchroniseer per locatie mapping
         success = True
         for mapping in location_mappings:
             for variant in product.product_variant_ids:
@@ -140,7 +137,6 @@ class ShopifySync(models.AbstractModel):
                     continue
                 try:
                     qty = self._get_shopify_sellable_qty(variant, mapping.warehouse_id)
-
                     url = f"{config.shop_url}/admin/api/2025-01/inventory_levels/set.json"
                     response = requests.post(
                         url,
