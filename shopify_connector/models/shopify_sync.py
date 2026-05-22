@@ -11,7 +11,6 @@ class ShopifySync(models.AbstractModel):
 
     @api.model
     def _get_config(self, shop_name=None):
-        """Haal de actieve Shopify configuratie op."""
         domain = [('state', '=', 'connected')]
         if shop_name:
             domain.append(('shop_name', '=', shop_name))
@@ -19,20 +18,17 @@ class ShopifySync(models.AbstractModel):
 
     @api.model
     def _get_price(self, variant, config):
-        """Haal de prijs op via prijslijst of standaard verkoopprijs."""
         if config.pricelist_id:
             try:
                 return config.pricelist_id._get_product_price(variant, 1.0)
             except Exception as e:
-                _logger.warning(f"Prijslijst prijs ophalen mislukt, gebruik standaard prijs: {e}")
+                _logger.warning(f"Prijslijst prijs ophalen mislukt: {e}")
                 return variant.lst_price
         return variant.lst_price
 
     @api.model
     def _get_product_images(self, product):
-        """Haal productafbeeldingen op als base64."""
         images = []
-
         if product.image_1920:
             try:
                 img_data = product.image_1920
@@ -41,7 +37,6 @@ class ShopifySync(models.AbstractModel):
                 images.append({'attachment': img_data})
             except Exception as e:
                 _logger.warning(f"Hoofdafbeelding ophalen mislukt: {e}")
-
         try:
             for extra_img in product.product_template_image_ids:
                 if extra_img.image_1920:
@@ -54,12 +49,10 @@ class ShopifySync(models.AbstractModel):
                         _logger.warning(f"Extra afbeelding ophalen mislukt: {e}")
         except Exception as e:
             _logger.warning(f"Extra afbeeldingen ophalen mislukt: {e}")
-
         return images
 
     @api.model
     def _get_description(self, product):
-        """Haal beschrijving op met prioriteitsvolgorde."""
         if product.shopify_description:
             return product.shopify_description
         if hasattr(product, 'website_description') and product.website_description:
@@ -87,7 +80,8 @@ class ShopifySync(models.AbstractModel):
         # Haal locatie mappings op
         location_mappings = self.env['shopify.location'].search([
             ('config_id', '=', config.id),
-            ('active', '=', True),
+            ('sync_inventory', '=', True),
+            ('warehouse_id', '!=', False),
         ])
 
         # Fallback naar standaard locatie als geen mappings
@@ -103,7 +97,6 @@ class ShopifySync(models.AbstractModel):
                 _logger.error("Geen Shopify locatie gevonden")
                 return False
 
-            # Gebruik fallback locatie
             for variant in product.product_variant_ids:
                 if not variant.shopify_inventory_item_id:
                     continue
@@ -158,7 +151,7 @@ class ShopifySync(models.AbstractModel):
                         timeout=15
                     )
                     if response.status_code == 200:
-                        _logger.info(f"Voorraad {qty} gesynchroniseerd voor {variant.name} naar locatie {mapping.shopify_location_name}")
+                        _logger.info(f"Voorraad {qty} gesynchroniseerd voor {variant.name} naar {mapping.shopify_location_name}")
                     else:
                         _logger.error(f"Voorraad sync mislukt: {response.text[:200]}")
                         success = False
@@ -239,14 +232,12 @@ class ShopifySync(models.AbstractModel):
                     _logger.info(f"Product {product.name} wordt niet gesynchroniseerd (niet gepubliceerd)")
                     return False
 
-            # Bepaal vendor
             vendor = ''
             if product.seller_ids:
                 vendor = product.seller_ids[0].partner_id.name
             else:
                 vendor = self.env.company.name
 
-            # Bepaal tags
             tags = ''
             if product.shopify_tags:
                 tags = product.shopify_tags
@@ -256,10 +247,8 @@ class ShopifySync(models.AbstractModel):
                 except Exception:
                     tags = ''
 
-            # Bepaal beschrijving
             body_html = self._get_description(product)
 
-            # Bouw product data op
             product_data = {
                 'product': {
                     'title': product.name,
@@ -273,32 +262,25 @@ class ShopifySync(models.AbstractModel):
                 }
             }
 
-            # Voeg afbeeldingen toe
             images = self._get_product_images(product)
             if images:
                 product_data['product']['images'] = images
 
-            # Voeg varianten toe
             for variant in product.product_variant_ids:
                 price = self._get_price(variant, config)
-
                 variant_data = {
                     'price': str(price),
                     'sku': variant.default_code or '',
                     'inventory_management': 'shopify',
                     'inventory_policy': 'continue' if config.allow_backorder else 'deny',
                 }
-
                 if hasattr(variant, 'barcode') and variant.barcode:
                     variant_data['barcode'] = variant.barcode
-
                 if hasattr(product, 'weight') and product.weight:
                     variant_data['weight'] = product.weight
                     variant_data['weight_unit'] = 'kg'
-
                 if variant.shopify_variant_id:
                     variant_data['id'] = variant.shopify_variant_id
-
                 product_data['product']['variants'].append(variant_data)
 
             if shopify_product_id:
