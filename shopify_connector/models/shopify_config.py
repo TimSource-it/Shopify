@@ -155,14 +155,11 @@ class ShopifyConfig(models.Model):
         self.ensure_one()
         self._fetch_locations()
         return {
-            'type': 'ir.actions.client',
-            'tag': 'display_notification',
-            'params': {
-                'title': 'Locaties opgehaald!',
-                'message': f"{len(self.location_ids)} locaties beschikbaar.",
-                'type': 'success',
-                'sticky': False,
-            }
+            'type': 'ir.actions.act_window',
+            'res_model': 'shopify.config',
+            'res_id': self.id,
+            'view_mode': 'form',
+            'target': 'current',
         }
 
     def _get_valid_token(self):
