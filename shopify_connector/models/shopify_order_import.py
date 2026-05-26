@@ -18,6 +18,7 @@ class ShopifyOrderImport(models.AbstractModel):
 
     @api.model
     def _should_confirm_order(self, config, financial_status):
+        """Bepaal of de order bevestigd moet worden op basis van de instelling."""
         if config.confirm_order_on == 'always':
             return True
         if config.confirm_order_on == 'never':
@@ -30,6 +31,7 @@ class ShopifyOrderImport(models.AbstractModel):
 
     @api.model
     def _create_invoice(self, order, config):
+        """Maak een factuur aan voor de order."""
         if not config._account_available():
             return False
         if config.invoice_policy == 'never':
@@ -52,6 +54,7 @@ class ShopifyOrderImport(models.AbstractModel):
 
     @api.model
     def _register_payment(self, invoice, config):
+        """Registreer betaling via de tussenrekening."""
         try:
             if not config._account_available():
                 return
@@ -82,6 +85,7 @@ class ShopifyOrderImport(models.AbstractModel):
 
     @api.model
     def _get_or_create_partner(self, customer_data, shipping_address=None):
+        """Zoek of maak een klant aan in Odoo."""
         if not customer_data:
             return self.env['res.partner'].browse(1)
 
@@ -131,6 +135,7 @@ class ShopifyOrderImport(models.AbstractModel):
 
     @api.model
     def _get_product_by_variant_id(self, shopify_variant_id):
+        """Zoek product op basis van Shopify variant ID."""
         if not shopify_variant_id:
             return False
         return self.env['product.product'].search([
@@ -139,6 +144,7 @@ class ShopifyOrderImport(models.AbstractModel):
 
     @api.model
     def _get_or_create_shipping_product(self):
+        """Zoek of maak het verzendkostenproduct aan."""
         product = self.env['product.product'].search([
             ('default_code', '=', 'SHOPIFY-SHIPPING')
         ], limit=1)
@@ -154,6 +160,7 @@ class ShopifyOrderImport(models.AbstractModel):
 
     @api.model
     def _get_or_create_discount_product(self):
+        """Zoek of maak het kortingsproduct aan."""
         product = self.env['product.product'].search([
             ('default_code', '=', 'SHOPIFY-DISCOUNT')
         ], limit=1)
@@ -169,6 +176,7 @@ class ShopifyOrderImport(models.AbstractModel):
 
     @api.model
     def _add_shipping_lines(self, order, order_data, config):
+        """Voeg verzendkosten toe als orderregel."""
         shipping_lines = order_data.get('shipping_lines', [])
         if not shipping_lines:
             return
@@ -189,6 +197,7 @@ class ShopifyOrderImport(models.AbstractModel):
 
     @api.model
     def _add_discount_lines(self, order, order_data, config):
+        """Voeg kortingen toe als negatieve orderregel."""
         total_discounts = float(order_data.get('total_discounts', 0))
         if total_discounts <= 0:
             return
@@ -207,11 +216,13 @@ class ShopifyOrderImport(models.AbstractModel):
 
     @api.model
     def _import_order(self, order_data, config):
+        """Importeer een enkele Shopify bestelling als verkooporder."""
         shopify_order_id = str(order_data.get('id', ''))
         shopify_order_number = order_data.get('order_number', '')
         financial_status = order_data.get('financial_status', '')
         fulfillment_status = order_data.get('fulfillment_status', '') or 'unfulfilled'
 
+        # Check of bestelling al bestaat
         existing = self.env['sale.order'].search([
             ('shopify_order_id', '=', shopify_order_id)
         ], limit=1)
@@ -228,10 +239,12 @@ class ShopifyOrderImport(models.AbstractModel):
             _logger.info(f"Bestelling {shopify_order_number} bijgewerkt")
             return existing
 
+        # Haal klant op
         customer_data = order_data.get('customer', {})
         shipping_address = order_data.get('shipping_address', {})
         partner = self._get_or_create_partner(customer_data, shipping_address)
 
+        # Maak verkooporder aan
         order = self.env['sale.order'].create({
             'partner_id': partner.id,
             'shopify_order_id': shopify_order_id,
@@ -241,20 +254,32 @@ class ShopifyOrderImport(models.AbstractModel):
             'client_order_ref': f"Shopify #{shopify_order_number}",
         })
 
+        # Voeg productregels toe
+        warnings = []
+
         for line in order_data.get('line_items', []):
             shopify_variant_id = line.get('variant_id')
+            shopify_price = float(line.get('price', 0))
             product = self._get_product_by_variant_id(shopify_variant_id)
 
             line_vals = {
                 'order_id': order.id,
                 'name': line.get('title', 'Onbekend product'),
                 'product_uom_qty': line.get('quantity', 1),
-                'price_unit': float(line.get('price', 0)),
+                'price_unit': shopify_price,
             }
 
             if product:
                 line_vals['product_id'] = product.id
                 line_vals['name'] = product.name
+
+                # Prijsvergelijking met Odoo prijslijstprijs
+                odoo_price = self.env['shopify.sync']._get_price(product, config)
+                if round(odoo_price, 2) != round(shopify_price, 2):
+                    warnings.append(
+                        f"⚠️ Prijsafwijking op '{product.name}': "
+                        f"Shopify €{shopify_price:.2f} — Odoo €{odoo_price:.2f}"
+                    )
             else:
                 generic = self.env['product.product'].search([
                     ('default_code', '=', 'SHOPIFY-GENERIC')
@@ -267,15 +292,31 @@ class ShopifyOrderImport(models.AbstractModel):
                     })
                 line_vals['product_id'] = generic.id
                 line_vals['name'] = line.get('title', 'Onbekend product')
+                warnings.append(
+                    f"⚠️ Niet-gekoppeld product: '{line.get('title')}' "
+                    f"(Shopify variant ID: {shopify_variant_id})"
+                )
 
             if config.tax_id and config._account_available():
                 line_vals['tax_id'] = [(6, 0, [config.tax_id.id])]
 
             self.env['sale.order.line'].create(line_vals)
 
+        # Notitie op de order als er waarschuwingen zijn
+        if warnings:
+            order.message_post(
+                body="<br/>".join(warnings),
+                message_type='comment',
+                subtype_xmlid='mail.mt_note',
+            )
+
+        # Verzendkosten toevoegen
         self._add_shipping_lines(order, order_data, config)
+
+        # Kortingen toevoegen
         self._add_discount_lines(order, order_data, config)
 
+        # Bevestig order op basis van instelling
         if self._should_confirm_order(config, financial_status):
             order.action_confirm()
             _logger.info(f"Order {shopify_order_number} automatisch bevestigd")
@@ -287,6 +328,7 @@ class ShopifyOrderImport(models.AbstractModel):
 
     @api.model
     def _process_refund(self, order, config):
+        """Verwerk een terugbetaling op basis van de instelling."""
         if config.refund_policy == 'manual':
             _logger.info(f"Retour voor {order.name} moet handmatig verwerkt worden")
             return
@@ -311,6 +353,7 @@ class ShopifyOrderImport(models.AbstractModel):
 
     @api.model
     def import_orders_from_shopify(self, config=None, since_id=None):
+        """Importeer bestellingen van Shopify."""
         if not config:
             config = self._get_config()
         if not config:
@@ -349,6 +392,7 @@ class ShopifyOrderImport(models.AbstractModel):
 
     @api.model
     def cron_import_orders(self):
+        """Cron job: importeer nieuwe bestellingen."""
         config = self._get_config()
         if not config or not config.sync_orders:
             return
