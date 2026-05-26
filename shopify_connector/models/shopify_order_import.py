@@ -215,6 +215,18 @@ class ShopifyOrderImport(models.AbstractModel):
         _logger.info(f"Korting toegevoegd: -{total_discounts} ({codes})")
 
     @api.model
+    def _get_tax_ids(self, product, config):
+        """Bepaal de BTW voor een orderregel.
+        Gebruik de BTW van het product als die beschikbaar is,
+        anders de standaard BTW uit de config als fallback.
+        """
+        if product and product.taxes_id:
+            return [(6, 0, product.taxes_id.ids)]
+        if config.tax_id and config._account_available():
+            return [(6, 0, [config.tax_id.id])]
+        return []
+
+    @api.model
     def _import_order(self, order_data, config):
         """Importeer een enkele Shopify bestelling als verkooporder."""
         shopify_order_id = str(order_data.get('id', ''))
@@ -297,8 +309,10 @@ class ShopifyOrderImport(models.AbstractModel):
                     f"(Shopify variant ID: {shopify_variant_id})"
                 )
 
-            if config.tax_id and config._account_available():
-                line_vals['tax_id'] = [(6, 0, [config.tax_id.id])]
+            # BTW: product BTW heeft prioriteit, config BTW is fallback
+            tax_ids = self._get_tax_ids(product, config)
+            if tax_ids:
+                line_vals['tax_id'] = tax_ids
 
             self.env['sale.order.line'].create(line_vals)
 
