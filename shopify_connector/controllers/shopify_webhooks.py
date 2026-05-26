@@ -190,8 +190,9 @@ class ShopifyWebhookController(http.Controller):
             shopify_order_id = str(order_data.get('id', ''))
             financial_status = order_data.get('financial_status', '')
             fulfillment_status = order_data.get('fulfillment_status', '') or 'unfulfilled'
+            shop_domain = request.httprequest.headers.get('X-Shopify-Shop-Domain', '')
+            config = self._get_config_for_shop(shop_domain)
 
-            # Zoek bestaande order in Odoo
             order = request.env['sale.order'].sudo().search([
                 ('shopify_order_id', '=', shopify_order_id)
             ], limit=1)
@@ -201,11 +202,17 @@ class ShopifyWebhookController(http.Controller):
                     'shopify_financial_status': financial_status,
                     'shopify_fulfillment_status': fulfillment_status,
                 })
+                # Alsnog bevestigen als betaalstatus veranderd is
+                if config and order.state == 'draft':
+                    importer = request.env['shopify.order.import'].sudo()
+                    if importer._should_confirm_order(config, financial_status):
+                        order.sudo().action_confirm()
+                        _logger.info(f"Order {order.name} alsnog bevestigd via orders/updated webhook")
+                        if config.invoice_policy == 'on_confirm':
+                            importer._create_invoice(order, config)
                 _logger.info(f"Bestelling {order.name} bijgewerkt: {financial_status} / {fulfillment_status}")
             else:
                 # Bestelling bestaat nog niet — importeer hem
-                shop_domain = request.httprequest.headers.get('X-Shopify-Shop-Domain', '')
-                config = self._get_config_for_shop(shop_domain)
                 if config:
                     request.env['shopify.order.import'].sudo()._import_order(order_data, config)
 
@@ -229,7 +236,6 @@ class ShopifyWebhookController(http.Controller):
             order_data = json.loads(data)
             shopify_order_id = str(order_data.get('id', ''))
 
-            # Zoek bestaande order in Odoo
             order = request.env['sale.order'].sudo().search([
                 ('shopify_order_id', '=', shopify_order_id)
             ], limit=1)
@@ -239,7 +245,6 @@ class ShopifyWebhookController(http.Controller):
                     'shopify_financial_status': 'cancelled',
                     'shopify_fulfillment_status': 'cancelled',
                 })
-                # Annuleer de order in Odoo als die nog in concept staat
                 if order.state == 'draft':
                     order.sudo().action_cancel()
                 _logger.info(f"Bestelling {order.name} geannuleerd via Shopify webhook")
