@@ -234,10 +234,19 @@ class ShopifyOrderImport(models.AbstractModel):
         financial_status = order_data.get('financial_status', '')
         fulfillment_status = order_data.get('fulfillment_status', '') or 'unfulfilled'
 
+        # Lock op database niveau om race conditions te voorkomen
+        # tussen webhook en cron die tegelijk dezelfde order verwerken
+        self.env.cr.execute(
+            "SELECT id FROM sale_order WHERE shopify_order_id = %s FOR UPDATE SKIP LOCKED",
+            (shopify_order_id,)
+        )
+        locked_row = self.env.cr.fetchone()
+
         # Check of bestelling al bestaat
         existing = self.env['sale.order'].search([
             ('shopify_order_id', '=', shopify_order_id)
         ], limit=1)
+
         if existing:
             existing.write({
                 'shopify_financial_status': financial_status,
@@ -250,6 +259,18 @@ class ShopifyOrderImport(models.AbstractModel):
                     self._create_invoice(existing, config)
             _logger.info(f"Bestelling {shopify_order_number} bijgewerkt")
             return existing
+
+        # Als de lock niet verkregen kon worden betekent dat een ander
+        # proces bezig is met dezelfde order — sla over
+        if locked_row is None and not existing:
+            # Controleer nogmaals na lock poging — mogelijk net aangemaakt
+            self.env.cr.execute(
+                "SELECT id FROM sale_order WHERE shopify_order_id = %s",
+                (shopify_order_id,)
+            )
+            if self.env.cr.fetchone():
+                _logger.info(f"Order {shopify_order_number} al verwerkt door ander proces")
+                return False
 
         # Haal klant op
         customer_data = order_data.get('customer', {})
@@ -264,6 +285,7 @@ class ShopifyOrderImport(models.AbstractModel):
             'shopify_financial_status': financial_status,
             'shopify_fulfillment_status': fulfillment_status,
             'client_order_ref': f"Shopify #{shopify_order_number}",
+            'pricelist_id': config.pricelist_id.id if config.pricelist_id else False,
         })
 
         # Voeg productregels toe
