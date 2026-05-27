@@ -175,6 +175,18 @@ class ShopifyOrderImport(models.AbstractModel):
         return product
 
     @api.model
+    def _get_tax_ids(self, product, config):
+        """Bepaal de BTW voor een orderregel.
+        Gebruik de BTW van het product als die beschikbaar is,
+        anders de standaard BTW uit de config als fallback.
+        """
+        if product and product.taxes_id:
+            return [(6, 0, product.taxes_id.ids)]
+        if config.tax_id and config._account_available():
+            return [(6, 0, [config.tax_id.id])]
+        return []
+
+    @api.model
     def _add_shipping_lines(self, order, order_data, config):
         """Voeg verzendkosten toe als orderregel."""
         shipping_lines = order_data.get('shipping_lines', [])
@@ -191,7 +203,7 @@ class ShopifyOrderImport(models.AbstractModel):
                 'name': shipping.get('title', 'Verzendkosten'),
                 'product_uom_qty': 1,
                 'price_unit': price,
-                'tax_id': [(5, 0, 0)],
+                'tax_ids': [(5, 0, 0)],
             })
             _logger.info(f"Verzendkosten toegevoegd: {shipping.get('title')} € {price}")
 
@@ -210,21 +222,9 @@ class ShopifyOrderImport(models.AbstractModel):
             'name': f"Korting: {codes}",
             'product_uom_qty': 1,
             'price_unit': -total_discounts,
-            'tax_id': [(5, 0, 0)],
+            'tax_ids': [(5, 0, 0)],
         })
         _logger.info(f"Korting toegevoegd: -{total_discounts} ({codes})")
-
-    @api.model
-    def _get_tax_ids(self, product, config):
-        """Bepaal de BTW voor een orderregel.
-        Gebruik de BTW van het product als die beschikbaar is,
-        anders de standaard BTW uit de config als fallback.
-        """
-        if product and product.taxes_id:
-            return [(6, 0, product.taxes_id.ids)]
-        if config.tax_id and config._account_available():
-            return [(6, 0, [config.tax_id.id])]
-        return []
 
     @api.model
     def _import_order(self, order_data, config):
@@ -312,7 +312,7 @@ class ShopifyOrderImport(models.AbstractModel):
             # BTW: product BTW heeft prioriteit, config BTW is fallback
             tax_ids = self._get_tax_ids(product, config)
             if tax_ids:
-                line_vals['tax_id'] = tax_ids
+                line_vals['tax_ids'] = tax_ids
 
             self.env['sale.order.line'].create(line_vals)
 
