@@ -93,6 +93,12 @@ class ShopifyOrderImport(models.AbstractModel):
         name = f"{customer_data.get('first_name', '')} {customer_data.get('last_name', '')}".strip()
         shopify_customer_id = str(customer_data.get('id', ''))
 
+        # Lock op database niveau om race conditions te voorkomen
+        self.env.cr.execute(
+            "SELECT id FROM res_partner WHERE shopify_customer_id = %s FOR UPDATE SKIP LOCKED",
+            (shopify_customer_id,)
+        )
+
         partner = self.env['res.partner'].search([
             ('shopify_customer_id', '=', shopify_customer_id)
         ], limit=1)
@@ -103,6 +109,15 @@ class ShopifyOrderImport(models.AbstractModel):
             ], limit=1)
 
         if not partner:
+            # Nogmaals controleren na lock
+            self.env.cr.execute(
+                "SELECT id FROM res_partner WHERE shopify_customer_id = %s",
+                (shopify_customer_id,)
+            )
+            row = self.env.cr.fetchone()
+            if row:
+                return self.env['res.partner'].browse(row[0])
+
             vals = {
                 'name': name or email or 'Shopify Klant',
                 'email': email,
@@ -125,8 +140,17 @@ class ShopifyOrderImport(models.AbstractModel):
                     ], limit=1)
                     if country:
                         vals['country_id'] = country.id
-            partner = self.env['res.partner'].create(vals)
-            _logger.info(f"Nieuwe klant aangemaakt: {partner.name}")
+            try:
+                partner = self.env['res.partner'].create(vals)
+                _logger.info(f"Nieuwe klant aangemaakt: {partner.name}")
+            except Exception as e:
+                # Mogelijk toch dubbel door race condition — zoek opnieuw
+                _logger.warning(f"Klant aanmaak mislukt, opnieuw zoeken: {e}")
+                partner = self.env['res.partner'].search([
+                    ('shopify_customer_id', '=', shopify_customer_id)
+                ], limit=1)
+                if not partner:
+                    partner = self.env['res.partner'].browse(1)
         else:
             if not partner.shopify_customer_id:
                 partner.shopify_customer_id = shopify_customer_id
@@ -263,7 +287,6 @@ class ShopifyOrderImport(models.AbstractModel):
         # Als de lock niet verkregen kon worden betekent dat een ander
         # proces bezig is met dezelfde order — sla over
         if locked_row is None and not existing:
-            # Controleer nogmaals na lock poging — mogelijk net aangemaakt
             self.env.cr.execute(
                 "SELECT id FROM sale_order WHERE shopify_order_id = %s",
                 (shopify_order_id,)
