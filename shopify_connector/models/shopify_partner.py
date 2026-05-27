@@ -1,5 +1,4 @@
 from odoo import models, fields
-from odoo.models import Constraint
 
 
 class ResPartner(models.Model):
@@ -11,10 +10,8 @@ class ResPartner(models.Model):
         index=True,
     )
 
-    _constraints = [
-        Constraint(
-            'shopify_customer_id_unique',
-            'UNIQUE(shopify_customer_id)',
-            'Een klant met dit Shopify ID bestaat al.'
-        )
+    _sql_constraints = [
+        ('shopify_customer_id_unique',
+         'UNIQUE(shopify_customer_id)',
+         'Een klant met dit Shopify ID bestaat al.')
     ]
