@@ -9,3 +9,9 @@ class ResPartner(models.Model):
         copy=False,
         index=True,
     )
+
+    _sql_constraints = [
+        ('shopify_customer_id_unique',
+         'UNIQUE(shopify_customer_id)',
+         'Een klant met dit Shopify ID bestaat al.')
+    ]
