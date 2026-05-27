@@ -36,6 +36,57 @@ class ShopifyWebhookController(http.Controller):
             ('state', '=', 'connected'),
         ], limit=1)
 
+    def _cancel_order(self, order):
+        """Annuleer een order op basis van de huidige status."""
+        try:
+            if order.state == 'draft':
+                order.action_cancel()
+                _logger.info(f"Order {order.name} geannuleerd (was draft)")
+                return
+
+            if order.state == 'sale':
+                # Controleer of er facturen zijn
+                invoices = order.invoice_ids.filtered(
+                    lambda i: i.state == 'posted' and i.move_type == 'out_invoice'
+                )
+
+                if invoices:
+                    # Maak credit nota aan voor elke factuur
+                    for invoice in invoices:
+                        refund = invoice._reverse_moves()
+                        refund.action_post()
+                        _logger.info(f"Credit nota aangemaakt voor {invoice.name}")
+
+                # Annuleer leveringen
+                for picking in order.picking_ids.filtered(lambda p: p.state not in ('done', 'cancel')):
+                    picking.action_cancel()
+
+                # Annuleer de order
+                order.action_cancel()
+                _logger.info(f"Order {order.name} geannuleerd (was sale)")
+                return
+
+            if order.state == 'done':
+                # Order al verzonden — alleen status bijwerken, retour apart afhandelen
+                order.write({
+                    'shopify_financial_status': 'cancelled',
+                    'shopify_fulfillment_status': 'cancelled',
+                })
+                order.message_post(
+                    body="⚠️ Deze order is geannuleerd in Shopify maar is al verzonden. Verwerk het retour handmatig.",
+                    message_type='comment',
+                    subtype_xmlid='mail.mt_note',
+                )
+                _logger.info(f"Order {order.name} al verzonden — handmatige actie vereist")
+
+        except Exception as e:
+            _logger.error(f"Order annuleren mislukt voor {order.name}: {e}")
+            order.message_post(
+                body=f"⚠️ Automatisch annuleren mislukt: {e}. Verwerk handmatig.",
+                message_type='comment',
+                subtype_xmlid='mail.mt_note',
+            )
+
     @http.route('/shopify/webhooks/customers/redact',
                 type='http', auth='public', csrf=False, methods=['POST'])
     def customers_redact(self, **kwargs):
@@ -202,7 +253,6 @@ class ShopifyWebhookController(http.Controller):
                     'shopify_financial_status': financial_status,
                     'shopify_fulfillment_status': fulfillment_status,
                 })
-                # Alsnog bevestigen als betaalstatus veranderd is
                 if config and order.state == 'draft':
                     importer = request.env['shopify.order.import'].sudo()
                     if importer._should_confirm_order(config, financial_status):
@@ -212,7 +262,6 @@ class ShopifyWebhookController(http.Controller):
                             importer._create_invoice(order, config)
                 _logger.info(f"Bestelling {order.name} bijgewerkt: {financial_status} / {fulfillment_status}")
             else:
-                # Bestelling bestaat nog niet — importeer hem
                 if config:
                     request.env['shopify.order.import'].sudo()._import_order(order_data, config)
 
@@ -245,9 +294,8 @@ class ShopifyWebhookController(http.Controller):
                     'shopify_financial_status': 'cancelled',
                     'shopify_fulfillment_status': 'cancelled',
                 })
-                if order.state == 'draft':
-                    order.sudo().action_cancel()
-                _logger.info(f"Bestelling {order.name} geannuleerd via Shopify webhook")
+                self._cancel_order(order.sudo())
+                _logger.info(f"Annulering verwerkt voor {order.name}")
 
             return request.make_response('OK', status=200)
         except Exception as e:
