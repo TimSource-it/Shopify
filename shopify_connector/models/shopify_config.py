@@ -44,6 +44,10 @@ class ShopifyConfig(models.Model):
         string='Standaard Shopify Locatie ID',
         help='Fallback locatie als geen mapping beschikbaar is.',
     )
+    shopify_carrier_service_id = fields.Char(
+        string='Shopify CarrierService ID',
+        readonly=True,
+    )
     location_ids = fields.One2many(
         'shopify.location',
         'config_id',
@@ -222,6 +226,72 @@ class ShopifyConfig(models.Model):
             except Exception as e:
                 _logger.error(f"Webhook registratie fout: {e}")
 
+    def _register_carrier_service(self):
+        """Registreer onze app als CarrierService bij Shopify."""
+        try:
+            base_url = self._get_base_url()
+            callback_url = f"{base_url}/shopify/carrier/rates"
+
+            # Check of CarrierService al bestaat
+            url = f"{self.shop_url}/admin/api/2025-01/carrier_services.json"
+            response = requests.get(url, headers=self._get_headers(), timeout=10)
+
+            if response.status_code == 200:
+                existing = response.json().get('carrier_services', [])
+                for cs in existing:
+                    if cs.get('callback_url') == callback_url:
+                        _logger.info(f"CarrierService al geregistreerd voor {self.shop_name}")
+                        return True
+
+            # Registreer nieuwe CarrierService
+            response = requests.post(
+                url,
+                json={
+                    'carrier_service': {
+                        'name': 'Odoo Connector by Source IT',
+                        'callback_url': callback_url,
+                        'service_discovery': True,
+                        'format': 'json',
+                    }
+                },
+                headers=self._get_headers(),
+                timeout=10
+            )
+
+            if response.status_code in (200, 201):
+                carrier_service_id = response.json().get('carrier_service', {}).get('id')
+                self.write({'shopify_carrier_service_id': str(carrier_service_id)})
+                _logger.info(f"CarrierService geregistreerd voor {self.shop_name}: {carrier_service_id}")
+                return True
+            else:
+                _logger.error(f"CarrierService registratie mislukt: {response.text[:200]}")
+                return False
+
+        except Exception as e:
+            _logger.error(f"CarrierService registratie fout: {e}")
+            return False
+
+    def _unregister_carrier_service(self):
+        """Verwijder onze CarrierService bij Shopify."""
+        try:
+            if not self.shopify_carrier_service_id:
+                return True
+
+            url = f"{self.shop_url}/admin/api/2025-01/carrier_services/{self.shopify_carrier_service_id}.json"
+            response = requests.delete(url, headers=self._get_headers(), timeout=10)
+
+            if response.status_code in (200, 204):
+                self.write({'shopify_carrier_service_id': False})
+                _logger.info(f"CarrierService verwijderd voor {self.shop_name}")
+                return True
+            else:
+                _logger.warning(f"CarrierService verwijderen mislukt: {response.text[:200]}")
+                return False
+
+        except Exception as e:
+            _logger.error(f"CarrierService verwijderen fout: {e}")
+            return False
+
     def action_fetch_locations(self):
         self.ensure_one()
         self._fetch_locations()
@@ -317,6 +387,7 @@ class ShopifyConfig(models.Model):
                 self.write(vals)
                 self._fetch_locations()
                 self._register_webhooks()
+                self._register_carrier_service()
                 return True
             else:
                 self.state = 'error'
