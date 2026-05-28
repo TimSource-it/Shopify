@@ -11,6 +11,7 @@
         'sale_management',
         'stock',
         'web',
+        'delivery',
     ],
     'data': [
         'security/ir.model.access.csv',
