@@ -232,7 +232,6 @@ class ShopifyConfig(models.Model):
             base_url = self._get_base_url()
             callback_url = f"{base_url}/shopify/carrier/rates"
 
-            # Check of CarrierService al bestaat
             url = f"{self.shop_url}/admin/api/2025-01/carrier_services.json"
             response = requests.get(url, headers=self._get_headers(), timeout=10)
 
@@ -243,7 +242,6 @@ class ShopifyConfig(models.Model):
                         _logger.info(f"CarrierService al geregistreerd voor {self.shop_name}")
                         return True
 
-            # Registreer nieuwe CarrierService
             response = requests.post(
                 url,
                 json={
@@ -272,7 +270,6 @@ class ShopifyConfig(models.Model):
                     error_text = str(error_msg)
 
                 _logger.warning(f"CarrierService registratie mislukt voor {self.shop_name}: {error_text}")
-
                 self.message_post(
                     body=(
                         f"⚠️ Live verzendtarieven niet beschikbaar: {error_text}. "
@@ -346,6 +343,12 @@ class ShopifyConfig(models.Model):
             'read_inventory', 'write_inventory',
             'read_customers', 'write_customers',
             'read_fulfillments', 'write_fulfillments',
+            'read_merchant_managed_fulfillment_orders',
+            'write_merchant_managed_fulfillment_orders',
+            'read_assigned_fulfillment_orders',
+            'write_assigned_fulfillment_orders',
+            'read_third_party_fulfillment_orders',
+            'write_third_party_fulfillment_orders',
             'read_shipping', 'write_shipping',
             'read_returns', 'write_returns',
             'read_price_rules', 'write_price_rules',
