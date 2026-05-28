@@ -93,7 +93,6 @@ class ShopifyOrderImport(models.AbstractModel):
         name = f"{customer_data.get('first_name', '')} {customer_data.get('last_name', '')}".strip()
         shopify_customer_id = str(customer_data.get('id', ''))
 
-        # Lock op database niveau om race conditions te voorkomen
         self.env.cr.execute(
             "SELECT id FROM res_partner WHERE shopify_customer_id = %s FOR UPDATE SKIP LOCKED",
             (shopify_customer_id,)
@@ -198,10 +197,7 @@ class ShopifyOrderImport(models.AbstractModel):
 
     @api.model
     def _get_tax_ids(self, product, config):
-        """Bepaal de BTW voor een orderregel.
-        Gebruik de BTW van het product als die beschikbaar is,
-        anders de standaard BTW uit de config als fallback.
-        """
+        """Bepaal de BTW voor een orderregel."""
         if product and product.taxes_id:
             return [(6, 0, product.taxes_id.ids)]
         if config.tax_id and config._account_available():
@@ -221,13 +217,11 @@ class ShopifyOrderImport(models.AbstractModel):
             price = float(shipping.get('price', 0))
             title = shipping.get('title', 'Verzendkosten')
 
-            # Probeer Odoo carrier te vinden op basis van naam
             carrier = self.env['delivery.carrier'].search([
                 ('name', 'ilike', title),
                 ('active', '=', True),
             ], limit=1)
 
- # Als carrier gevonden — koppel aan order (alleen als nog in draft)
             if carrier and not order.carrier_id and order.state == 'draft':
                 try:
                     order.write({'carrier_id': carrier.id})
@@ -235,7 +229,6 @@ class ShopifyOrderImport(models.AbstractModel):
                 except Exception as e:
                     _logger.warning(f"Carrier koppelen mislukt voor {order.name}: {e}")
 
-            # Voeg verzendkosten toe als orderregel als prijs > 0
             if price > 0:
                 self.env['sale.order.line'].create({
                     'order_id': order.id,
@@ -247,7 +240,6 @@ class ShopifyOrderImport(models.AbstractModel):
                 })
                 _logger.info(f"Verzendkosten toegevoegd: {title} € {price}")
             elif carrier:
-                # Gratis verzending — carrier koppelen, geen orderregel
                 _logger.info(f"Gratis verzending via '{carrier.name}' voor order {order.name}")
 
     @api.model
@@ -277,14 +269,12 @@ class ShopifyOrderImport(models.AbstractModel):
         financial_status = order_data.get('financial_status', '')
         fulfillment_status = order_data.get('fulfillment_status', '') or 'unfulfilled'
 
-        # Lock op database niveau om race conditions te voorkomen
         self.env.cr.execute(
             "SELECT id FROM sale_order WHERE shopify_order_id = %s FOR UPDATE SKIP LOCKED",
             (shopify_order_id,)
         )
         locked_row = self.env.cr.fetchone()
 
-        # Check of bestelling al bestaat
         existing = self.env['sale.order'].search([
             ('shopify_order_id', '=', shopify_order_id)
         ], limit=1)
@@ -311,12 +301,10 @@ class ShopifyOrderImport(models.AbstractModel):
                 _logger.info(f"Order {shopify_order_number} al verwerkt door ander proces")
                 return False
 
-        # Haal klant op
         customer_data = order_data.get('customer', {})
         shipping_address = order_data.get('shipping_address', {})
         partner = self._get_or_create_partner(customer_data, shipping_address)
 
-        # Maak verkooporder aan
         order = self.env['sale.order'].create({
             'partner_id': partner.id,
             'shopify_order_id': shopify_order_id,
@@ -327,7 +315,6 @@ class ShopifyOrderImport(models.AbstractModel):
             'pricelist_id': config.pricelist_id.id if config.pricelist_id else False,
         })
 
-        # Voeg productregels toe
         warnings = []
 
         for line in order_data.get('line_items', []):
@@ -346,7 +333,6 @@ class ShopifyOrderImport(models.AbstractModel):
                 line_vals['product_id'] = product.id
                 line_vals['name'] = product.name
 
-                # Prijsvergelijking met Odoo prijslijstprijs
                 odoo_price = self.env['shopify.sync']._get_price(product, config)
                 if round(odoo_price, 2) != round(shopify_price, 2):
                     warnings.append(
@@ -370,14 +356,12 @@ class ShopifyOrderImport(models.AbstractModel):
                     f"(Shopify variant ID: {shopify_variant_id})"
                 )
 
-            # BTW: product BTW heeft prioriteit, config BTW is fallback
             tax_ids = self._get_tax_ids(product, config)
             if tax_ids:
                 line_vals['tax_ids'] = tax_ids
 
             self.env['sale.order.line'].create(line_vals)
 
-        # Notitie op de order als er waarschuwingen zijn
         if warnings:
             order.message_post(
                 body="<br/>".join(warnings),
@@ -385,13 +369,9 @@ class ShopifyOrderImport(models.AbstractModel):
                 subtype_xmlid='mail.mt_note',
             )
 
-        # Verzendkosten toevoegen
         self._add_shipping_lines(order, order_data, config)
-
-        # Kortingen toevoegen
         self._add_discount_lines(order, order_data, config)
 
-        # Bevestig order op basis van instelling
         if self._should_confirm_order(config, financial_status):
             order.action_confirm()
             _logger.info(f"Order {shopify_order_number} automatisch bevestigd")
@@ -428,42 +408,243 @@ class ShopifyOrderImport(models.AbstractModel):
 
     @api.model
     def import_orders_from_shopify(self, config=None, since_id=None):
-        """Importeer bestellingen van Shopify."""
+        """Importeer bestellingen van Shopify via GraphQL."""
         if not config:
             config = self._get_config()
         if not config:
             _logger.error("Geen actieve Shopify configuratie")
             return False
+
         try:
-            params = 'status=any&limit=50'
-            if since_id:
-                params += f'&since_id={since_id}'
-            elif config.last_order_sync:
-                since = config.last_order_sync.strftime('%Y-%m-%dT%H:%M:%S')
-                params += f'&created_at_min={since}'
+            # Bouw cursor-gebaseerde paginering op
+            after_cursor = None
+            if config.last_order_sync:
+                since = config.last_order_sync.strftime('%Y-%m-%dT%H:%M:%SZ')
+                query_filter = f'created_at:>"{since}"'
+            else:
+                query_filter = ''
 
-            url = f"{config.shop_url}/admin/api/2025-01/orders.json?{params}"
-            response = requests.get(url, headers=config._get_headers(), timeout=30)
+            imported = 0
+            has_next_page = True
 
-            if response.status_code == 200:
-                orders = response.json().get('orders', [])
-                _logger.info(f"Shopify: {len(orders)} bestellingen gevonden")
-                imported = 0
-                for order_data in orders:
+            while has_next_page:
+                query = """
+                query getOrders($first: Int!, $after: String, $query: String) {
+                  orders(first: $first, after: $after, query: $query, sortKey: CREATED_AT) {
+                    pageInfo {
+                      hasNextPage
+                      endCursor
+                    }
+                    edges {
+                      node {
+                        id
+                        legacyResourceId
+                        orderNumber
+                        displayFinancialStatus
+                        displayFulfillmentStatus
+                        createdAt
+                        customer {
+                          id
+                          legacyResourceId
+                          email
+                          firstName
+                          lastName
+                          phone
+                          defaultAddress {
+                            address1
+                            address2
+                            city
+                            zip
+                            countryCodeV2
+                          }
+                        }
+                        shippingAddress {
+                          address1
+                          address2
+                          city
+                          zip
+                          countryCodeV2
+                        }
+                        lineItems(first: 50) {
+                          edges {
+                            node {
+                              id
+                              title
+                              quantity
+                              originalUnitPriceSet {
+                                shopMoney {
+                                  amount
+                                }
+                              }
+                              variant {
+                                id
+                                legacyResourceId
+                              }
+                            }
+                          }
+                        }
+                        shippingLines(first: 10) {
+                          edges {
+                            node {
+                              title
+                              originalPriceSet {
+                                shopMoney {
+                                  amount
+                                }
+                              }
+                            }
+                          }
+                        }
+                        discountCodes
+                        totalDiscountsSet {
+                          shopMoney {
+                            amount
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                """
+
+                variables = {
+                    'first': 50,
+                    'after': after_cursor,
+                    'query': query_filter or None,
+                }
+
+                data = config._graphql(query, variables)
+                if not data:
+                    break
+
+                orders_data = data.get('orders', {})
+                page_info = orders_data.get('pageInfo', {})
+                has_next_page = page_info.get('hasNextPage', False)
+                after_cursor = page_info.get('endCursor')
+
+                edges = orders_data.get('edges', [])
+                _logger.info(f"Shopify: {len(edges)} bestellingen gevonden")
+
+                for edge in edges:
                     try:
+                        order_node = edge['node']
+                        order_data = self._normalize_graphql_order(order_node)
                         self._import_order(order_data, config)
                         imported += 1
                     except Exception as e:
                         _logger.error(f"Bestelling import fout: {e}")
-                config.last_order_sync = fields.Datetime.now()
-                _logger.info(f"{imported} bestellingen geïmporteerd")
-                return imported
-            else:
-                _logger.error(f"Bestellingen ophalen mislukt: {response.text[:200]}")
-                return False
+
+            config.last_order_sync = fields.Datetime.now()
+            _logger.info(f"{imported} bestellingen geïmporteerd")
+            return imported
+
         except Exception as e:
             _logger.error(f"Order import fout: {e}")
             return False
+
+    @api.model
+    def _normalize_graphql_order(self, node):
+        """Converteer GraphQL order node naar het formaat dat _import_order verwacht."""
+        # Financial status normaliseren
+        financial_status_map = {
+            'PAID': 'paid',
+            'PENDING': 'pending',
+            'AUTHORIZED': 'authorized',
+            'PARTIALLY_PAID': 'partially_paid',
+            'PARTIALLY_REFUNDED': 'partially_refunded',
+            'REFUNDED': 'refunded',
+            'VOIDED': 'voided',
+        }
+        fulfillment_status_map = {
+            'FULFILLED': 'fulfilled',
+            'UNFULFILLED': 'unfulfilled',
+            'PARTIALLY_FULFILLED': 'partial',
+            'IN_PROGRESS': 'in_progress',
+            'ON_HOLD': 'on_hold',
+            'SCHEDULED': 'scheduled',
+        }
+
+        financial_status = financial_status_map.get(
+            node.get('displayFinancialStatus', ''), 'pending'
+        )
+        fulfillment_status = fulfillment_status_map.get(
+            node.get('displayFulfillmentStatus', ''), 'unfulfilled'
+        )
+
+        # Klant normaliseren
+        customer = node.get('customer') or {}
+        customer_data = {}
+        if customer:
+            customer_data = {
+                'id': customer.get('legacyResourceId', ''),
+                'email': customer.get('email', ''),
+                'first_name': customer.get('firstName', ''),
+                'last_name': customer.get('lastName', ''),
+                'phone': customer.get('phone', ''),
+                'default_address': self._normalize_address(
+                    customer.get('defaultAddress') or {}
+                ),
+            }
+
+        # Verzendadres normaliseren
+        shipping_addr = node.get('shippingAddress') or {}
+        shipping_address = self._normalize_address(shipping_addr)
+
+        # Orderregels normaliseren
+        line_items = []
+        for edge in node.get('lineItems', {}).get('edges', []):
+            item = edge['node']
+            variant = item.get('variant') or {}
+            price = item.get('originalUnitPriceSet', {}).get('shopMoney', {}).get('amount', '0')
+            line_items.append({
+                'title': item.get('title', ''),
+                'quantity': item.get('quantity', 1),
+                'price': price,
+                'variant_id': variant.get('legacyResourceId', ''),
+            })
+
+        # Verzendkosten normaliseren
+        shipping_lines = []
+        for edge in node.get('shippingLines', {}).get('edges', []):
+            shipping = edge['node']
+            price = shipping.get('originalPriceSet', {}).get('shopMoney', {}).get('amount', '0')
+            shipping_lines.append({
+                'title': shipping.get('title', 'Verzendkosten'),
+                'price': price,
+            })
+
+        # Kortingen normaliseren
+        total_discounts = node.get('totalDiscountsSet', {}).get('shopMoney', {}).get('amount', '0')
+        discount_codes = [
+            {'code': code}
+            for code in node.get('discountCodes', [])
+        ]
+
+        return {
+            'id': node.get('legacyResourceId', ''),
+            'order_number': node.get('orderNumber', ''),
+            'financial_status': financial_status,
+            'fulfillment_status': fulfillment_status,
+            'customer': customer_data,
+            'shipping_address': shipping_address,
+            'line_items': line_items,
+            'shipping_lines': shipping_lines,
+            'total_discounts': total_discounts,
+            'discount_codes': discount_codes,
+        }
+
+    @api.model
+    def _normalize_address(self, addr):
+        """Normaliseer een adres van GraphQL naar REST formaat."""
+        if not addr:
+            return {}
+        return {
+            'address1': addr.get('address1', ''),
+            'address2': addr.get('address2', ''),
+            'city': addr.get('city', ''),
+            'zip': addr.get('zip', ''),
+            'country_code': addr.get('countryCodeV2', ''),
+        }
 
     @api.model
     def cron_import_orders(self):
