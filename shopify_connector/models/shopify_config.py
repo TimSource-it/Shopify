@@ -110,6 +110,33 @@ class ShopifyConfig(models.Model):
             else:
                 rec.shop_url = False
 
+    def _graphql(self, query, variables=None):
+        """Voer een GraphQL query of mutation uit."""
+        self.ensure_one()
+        url = f"{self.shop_url}/admin/api/2025-01/graphql.json"
+        payload = {'query': query}
+        if variables:
+            payload['variables'] = variables
+        try:
+            response = requests.post(
+                url,
+                json=payload,
+                headers=self._get_headers(),
+                timeout=15
+            )
+            if response.status_code == 200:
+                data = response.json()
+                if 'errors' in data:
+                    _logger.error(f"GraphQL fouten: {data['errors']}")
+                    return None
+                return data.get('data')
+            else:
+                _logger.error(f"GraphQL request mislukt ({response.status_code}): {response.text[:200]}")
+                return None
+        except Exception as e:
+            _logger.error(f"GraphQL request fout: {e}")
+            return None
+
     def action_set_accounting_defaults(self):
         """Stel standaard boekhouding instellingen in."""
         self.ensure_one()
@@ -164,32 +191,52 @@ class ShopifyConfig(models.Model):
             }
 
     def _fetch_locations(self):
-        """Haal alle actieve Shopify locaties op en sla op als mapping."""
+        """Haal alle actieve Shopify locaties op via GraphQL."""
         try:
-            url = f"{self.shop_url}/admin/api/2025-01/locations.json"
-            response = requests.get(url, headers=self._get_headers(), timeout=10)
-            if response.status_code == 200:
-                locations = response.json().get('locations', [])
-                default_warehouse = self.env['stock.warehouse'].search([], limit=1)
-                active_locations = [l for l in locations if l.get('active')]
+            query = """
+            {
+              locations(first: 50) {
+                edges {
+                  node {
+                    id
+                    name
+                    isActive
+                    legacyResourceId
+                  }
+                }
+              }
+            }
+            """
+            data = self._graphql(query)
+            if not data:
+                return
 
-                for i, location in enumerate(active_locations):
-                    existing = self.env['shopify.location'].search([
-                        ('config_id', '=', self.id),
-                        ('shopify_location_id', '=', str(location['id'])),
-                    ], limit=1)
-                    if not existing:
-                        self.env['shopify.location'].create({
-                            'config_id': self.id,
-                            'shopify_location_id': str(location['id']),
-                            'shopify_location_name': location.get('name', ''),
-                            'warehouse_id': default_warehouse.id if (default_warehouse and i == 0) else False,
-                            'sync_inventory': i == 0,
-                        })
-                        _logger.info(f"Locatie aangemaakt: {location.get('name')}")
+            locations = [
+                edge['node']
+                for edge in data.get('locations', {}).get('edges', [])
+                if edge['node'].get('isActive')
+            ]
 
-                if active_locations:
-                    self.shopify_location_id = str(active_locations[0]['id'])
+            default_warehouse = self.env['stock.warehouse'].search([], limit=1)
+
+            for i, location in enumerate(locations):
+                legacy_id = location.get('legacyResourceId')
+                existing = self.env['shopify.location'].search([
+                    ('config_id', '=', self.id),
+                    ('shopify_location_id', '=', str(legacy_id)),
+                ], limit=1)
+                if not existing:
+                    self.env['shopify.location'].create({
+                        'config_id': self.id,
+                        'shopify_location_id': str(legacy_id),
+                        'shopify_location_name': location.get('name', ''),
+                        'warehouse_id': default_warehouse.id if (default_warehouse and i == 0) else False,
+                        'sync_inventory': i == 0,
+                    })
+                    _logger.info(f"Locatie aangemaakt: {location.get('name')}")
+
+            if locations:
+                self.shopify_location_id = str(locations[0].get('legacyResourceId'))
 
         except Exception as e:
             _logger.error(f"Locaties ophalen mislukt: {e}")
@@ -198,31 +245,82 @@ class ShopifyConfig(models.Model):
         self._fetch_locations()
 
     def _register_webhooks(self):
-        """Registreer webhooks bij Shopify."""
+        """Registreer webhooks bij Shopify via GraphQL."""
         base_url = self._get_base_url()
-        webhooks = [
-            {'topic': 'app/uninstalled', 'address': f"{base_url}/shopify/webhooks/app/uninstalled"},
-            {'topic': 'orders/create', 'address': f"{base_url}/shopify/webhooks/orders/create"},
-            {'topic': 'orders/updated', 'address': f"{base_url}/shopify/webhooks/orders/updated"},
-            {'topic': 'orders/cancelled', 'address': f"{base_url}/shopify/webhooks/orders/cancelled"},
+
+        webhook_topics = [
+            ('APP_UNINSTALLED', f"{base_url}/shopify/webhooks/app/uninstalled"),
+            ('ORDERS_CREATE', f"{base_url}/shopify/webhooks/orders/create"),
+            ('ORDERS_UPDATED', f"{base_url}/shopify/webhooks/orders/updated"),
+            ('ORDERS_CANCELLED', f"{base_url}/shopify/webhooks/orders/cancelled"),
+            ('RETURNS_CREATE', f"{base_url}/shopify/webhooks/returns/create"),
+            ('RETURNS_UPDATE', f"{base_url}/shopify/webhooks/returns/update"),
+            ('REFUNDS_CREATE', f"{base_url}/shopify/webhooks/refunds/create"),
         ]
-        for webhook in webhooks:
+
+        # Haal bestaande webhooks op om duplicaten te voorkomen
+        existing_query = """
+        {
+          webhookSubscriptions(first: 50) {
+            edges {
+              node {
+                id
+                topic
+                endpoint {
+                  ... on WebhookHttpEndpoint {
+                    callbackUrl
+                  }
+                }
+              }
+            }
+          }
+        }
+        """
+        data = self._graphql(existing_query)
+        existing_webhooks = {}
+        if data:
+            for edge in data.get('webhookSubscriptions', {}).get('edges', []):
+                node = edge['node']
+                callback = node.get('endpoint', {}).get('callbackUrl', '')
+                existing_webhooks[callback] = node['id']
+
+        # Registreer ontbrekende webhooks
+        create_mutation = """
+        mutation webhookSubscriptionCreate($topic: WebhookSubscriptionTopic!, $callbackUrl: URL!) {
+          webhookSubscriptionCreate(
+            topic: $topic
+            webhookSubscription: {
+              callbackUrl: $callbackUrl
+              format: JSON
+            }
+          ) {
+            webhookSubscription {
+              id
+              topic
+            }
+            userErrors {
+              field
+              message
+            }
+          }
+        }
+        """
+
+        for topic, callback_url in webhook_topics:
+            if callback_url in existing_webhooks:
+                _logger.info(f"Webhook al geregistreerd: {topic}")
+                continue
             try:
-                url = f"{self.shop_url}/admin/api/2025-01/webhooks.json"
-                response = requests.post(
-                    url,
-                    json={'webhook': {
-                        'topic': webhook['topic'],
-                        'address': webhook['address'],
-                        'format': 'json',
-                    }},
-                    headers=self._get_headers(),
-                    timeout=10
-                )
-                if response.status_code in (200, 201):
-                    _logger.info(f"Webhook geregistreerd: {webhook['topic']}")
-                else:
-                    _logger.warning(f"Webhook registratie mislukt: {response.text[:200]}")
+                result = self._graphql(create_mutation, {
+                    'topic': topic,
+                    'callbackUrl': callback_url,
+                })
+                if result:
+                    errors = result.get('webhookSubscriptionCreate', {}).get('userErrors', [])
+                    if errors:
+                        _logger.warning(f"Webhook registratie fout voor {topic}: {errors}")
+                    else:
+                        _logger.info(f"Webhook geregistreerd via GraphQL: {topic}")
             except Exception as e:
                 _logger.error(f"Webhook registratie fout: {e}")
 
@@ -232,6 +330,7 @@ class ShopifyConfig(models.Model):
             base_url = self._get_base_url()
             callback_url = f"{base_url}/shopify/carrier/rates"
 
+            # Check via REST want carrier services hebben geen GraphQL equivalent
             url = f"{self.shop_url}/admin/api/2025-01/carrier_services.json"
             response = requests.get(url, headers=self._get_headers(), timeout=10)
 
@@ -458,10 +557,11 @@ class ShopifyConfig(models.Model):
         if not self.access_token:
             raise UserError("Geen access token. Klik eerst op Verbind met Shopify.")
         try:
-            url = f"{self.shop_url}/admin/api/2025-01/shop.json"
-            response = requests.get(url, headers=self._get_headers(), timeout=10)
-            if response.status_code == 200:
-                shop_data = response.json().get('shop', {})
+            # Test via GraphQL
+            query = "{ shop { name } }"
+            data = self._graphql(query)
+            if data:
+                shop_name = data.get('shop', {}).get('name', self.shop_name)
                 self.state = 'connected'
                 if not self.location_ids:
                     self._fetch_locations()
@@ -470,14 +570,14 @@ class ShopifyConfig(models.Model):
                     'tag': 'display_notification',
                     'params': {
                         'title': 'Verbinding geslaagd!',
-                        'message': f"Verbonden met: {shop_data.get('name', self.shop_name)}",
+                        'message': f"Verbonden met: {shop_name}",
                         'type': 'success',
                         'sticky': False,
                     }
                 }
             else:
                 self.state = 'error'
-                raise UserError(f"Verbinding mislukt (status {response.status_code}).")
+                raise UserError("Verbinding mislukt.")
         except requests.exceptions.ConnectionError:
             self.state = 'error'
             raise UserError("Kan geen verbinding maken.")
