@@ -1,6 +1,7 @@
 from odoo import models, fields, api
 import requests
 import logging
+import base64
 
 _logger = logging.getLogger(__name__)
 
@@ -28,13 +29,14 @@ class ShopifySync(models.AbstractModel):
 
     @api.model
     def _get_product_images(self, product):
+        """Haal productafbeeldingen op als base64."""
         images = []
         if product.image_1920:
             try:
                 img_data = product.image_1920
                 if isinstance(img_data, bytes):
                     img_data = img_data.decode('utf-8')
-                images.append({'attachment': img_data})
+                images.append(img_data)
             except Exception as e:
                 _logger.warning(f"Hoofdafbeelding ophalen mislukt: {e}")
         try:
@@ -44,7 +46,7 @@ class ShopifySync(models.AbstractModel):
                         img_data = extra_img.image_1920
                         if isinstance(img_data, bytes):
                             img_data = img_data.decode('utf-8')
-                        images.append({'attachment': img_data})
+                        images.append(img_data)
                     except Exception as e:
                         _logger.warning(f"Extra afbeelding ophalen mislukt: {e}")
         except Exception as e:
@@ -90,16 +92,13 @@ class ShopifySync(models.AbstractModel):
     @api.model
     def _match_shopify_variants(self, product, shopify_variants):
         """Koppel Shopify varianten terug aan Odoo varianten via SKU of attribuutwaarden."""
-        # Bouw een lookup op basis van SKU
         shopify_by_sku = {}
-        # Bouw een lookup op basis van option combinatie
         shopify_by_options = {}
 
         for sv in shopify_variants:
             sku = sv.get('sku', '')
             if sku:
                 shopify_by_sku[sku] = sv
-            # Bouw option key: option1|option2|option3
             option_parts = []
             for key in ['option1', 'option2', 'option3']:
                 val = sv.get(key)
@@ -112,18 +111,15 @@ class ShopifySync(models.AbstractModel):
         for variant in product.product_variant_ids:
             matched = None
 
-            # 1. Al gekoppeld via shopify_variant_id
             if variant.shopify_variant_id:
                 for sv in shopify_variants:
                     if str(sv.get('id')) == str(variant.shopify_variant_id):
                         matched = sv
                         break
 
-            # 2. Match op SKU
             if not matched and variant.default_code:
                 matched = shopify_by_sku.get(variant.default_code)
 
-            # 3. Match op attribuutwaarden
             if not matched:
                 option_key = self._get_variant_option_key(variant)
                 if option_key:
@@ -132,7 +128,7 @@ class ShopifySync(models.AbstractModel):
             if matched:
                 variant.write({
                     'shopify_variant_id': str(matched.get('id')),
-                    'shopify_inventory_item_id': str(matched.get('inventory_item_id')),
+                    'shopify_inventory_item_id': str(matched.get('inventoryItem', {}).get('id', '').split('/')[-1] if isinstance(matched.get('inventoryItem'), dict) else matched.get('inventory_item_id', '')),
                 })
                 _logger.info(f"Variant {variant.name} gekoppeld aan Shopify variant {matched.get('id')}")
             else:
@@ -151,7 +147,7 @@ class ShopifySync(models.AbstractModel):
 
     @api.model
     def sync_inventory_to_shopify(self, product_tmpl_id, config=None):
-        """Synchroniseer voorraad van Odoo naar Shopify per locatie mapping."""
+        """Synchroniseer voorraad van Odoo naar Shopify via GraphQL."""
         if not config:
             config = self._get_config()
         if not config:
@@ -188,21 +184,12 @@ class ShopifySync(models.AbstractModel):
                     continue
                 try:
                     qty = max(0, int(variant.qty_available))
-                    url = f"{config.shop_url}/admin/api/2025-01/inventory_levels/set.json"
-                    response = requests.post(
-                        url,
-                        json={
-                            'location_id': int(fallback_location),
-                            'inventory_item_id': int(variant.shopify_inventory_item_id),
-                            'available': qty,
-                        },
-                        headers=config._get_headers(),
-                        timeout=15
+                    self._set_inventory_graphql(
+                        config,
+                        variant.shopify_inventory_item_id,
+                        fallback_location,
+                        qty
                     )
-                    if response.status_code == 200:
-                        _logger.info(f"Voorraad {qty} gesynchroniseerd voor {variant.name}")
-                    else:
-                        _logger.error(f"Voorraad sync mislukt: {response.text[:200]}")
                 except Exception as e:
                     _logger.error(f"Voorraad sync fout: {e}")
             return True
@@ -214,27 +201,60 @@ class ShopifySync(models.AbstractModel):
                     continue
                 try:
                     qty = self._get_shopify_sellable_qty(variant, mapping.warehouse_id)
-                    url = f"{config.shop_url}/admin/api/2025-01/inventory_levels/set.json"
-                    response = requests.post(
-                        url,
-                        json={
-                            'location_id': int(mapping.shopify_location_id),
-                            'inventory_item_id': int(variant.shopify_inventory_item_id),
-                            'available': qty,
-                        },
-                        headers=config._get_headers(),
-                        timeout=15
+                    result = self._set_inventory_graphql(
+                        config,
+                        variant.shopify_inventory_item_id,
+                        mapping.shopify_location_id,
+                        qty
                     )
-                    if response.status_code == 200:
+                    if result:
                         _logger.info(f"Voorraad {qty} gesynchroniseerd voor {variant.name} naar {mapping.shopify_location_name}")
                     else:
-                        _logger.error(f"Voorraad sync mislukt: {response.text[:200]}")
                         success = False
                 except Exception as e:
                     _logger.error(f"Voorraad sync fout: {e}")
                     success = False
 
         return success
+
+    @api.model
+    def _set_inventory_graphql(self, config, inventory_item_id, location_id, qty):
+        """Stel voorraad in via GraphQL mutation."""
+        mutation = """
+        mutation inventorySetOnHandQuantities($input: InventorySetOnHandQuantitiesInput!) {
+          inventorySetOnHandQuantities(input: $input) {
+            userErrors {
+              field
+              message
+            }
+            inventoryAdjustmentGroup {
+              reason
+              changes {
+                name
+                delta
+              }
+            }
+          }
+        }
+        """
+        variables = {
+            'input': {
+                'reason': 'correction',
+                'setQuantities': [{
+                    'inventoryItemId': f"gid://shopify/InventoryItem/{inventory_item_id}",
+                    'locationId': f"gid://shopify/Location/{location_id}",
+                    'quantity': qty,
+                }]
+            }
+        }
+        data = config._graphql(mutation, variables)
+        if data:
+            errors = data.get('inventorySetOnHandQuantities', {}).get('userErrors', [])
+            if errors:
+                _logger.error(f"Voorraad GraphQL fout: {errors}")
+                return False
+            return True
+        return False
 
     @api.model
     def cron_sync_pending_products(self):
@@ -259,7 +279,7 @@ class ShopifySync(models.AbstractModel):
 
     @api.model
     def sync_product_to_shopify(self, product_tmpl_id, config=None):
-        """Synchroniseer een product van Odoo naar Shopify."""
+        """Synchroniseer een product van Odoo naar Shopify via GraphQL."""
         if not config:
             config = self._get_config()
         if not config:
@@ -279,147 +299,45 @@ class ShopifySync(models.AbstractModel):
         shopify_published = row[1] if row else False
 
         try:
+            # Product op draft zetten als niet gepubliceerd
             if not shopify_published:
                 if shopify_product_id:
-                    url = f"{config.shop_url}/admin/api/2025-01/products/{shopify_product_id}.json"
-                    response = requests.put(
-                        url,
-                        json={'product': {'id': shopify_product_id, 'status': 'draft'}},
-                        headers=config._get_headers(),
-                        timeout=15
-                    )
-                    if response.status_code == 200:
-                        product.write({
-                            'shopify_sync_status': 'synced',
-                            'shopify_last_sync': fields.Datetime.now(),
-                        })
-                        _logger.info(f"Product {product.name} op draft gezet in Shopify")
-                        return True
-                    else:
-                        error = response.text[:200]
-                        product.write({
-                            'shopify_sync_status': 'error',
-                            'shopify_sync_error': error,
-                        })
-                        _logger.error(f"Product draft mislukt: {error}")
-                        return False
+                    return self._set_product_status(config, shopify_product_id, 'DRAFT', product)
                 else:
                     _logger.info(f"Product {product.name} wordt niet gesynchroniseerd (niet gepubliceerd)")
                     return False
 
+            # Bouw vendor op
             vendor = ''
             if product.seller_ids:
                 vendor = product.seller_ids[0].partner_id.name
             else:
                 vendor = self.env.company.name
 
-            tags = ''
+            # Tags
+            tags = []
             if product.shopify_tags:
-                tags = product.shopify_tags
+                tags = [t.strip() for t in product.shopify_tags.split(',')]
             elif hasattr(product, 'tag_ids') and product.tag_ids:
                 try:
-                    tags = ','.join(product.tag_ids.mapped('name'))
+                    tags = product.tag_ids.mapped('name')
                 except Exception:
-                    tags = ''
+                    tags = []
 
             body_html = self._get_description(product)
-
-            # Bepaal of dit product varianten heeft met attributen
             heeft_attributen = bool(product.attribute_line_ids)
             options = self._get_variant_options(product) if heeft_attributen else []
 
-            product_data = {
-                'product': {
-                    'title': product.name,
-                    'body_html': body_html,
-                    'vendor': vendor,
-                    'product_type': product.categ_id.name or '',
-                    'status': 'active',
-                    'tags': tags,
-                    'published_scope': config.published_scope or 'global',
-                    'variants': [],
-                }
-            }
-
-            # Voeg options toe als het product attributen heeft
-            if options:
-                product_data['product']['options'] = [
-                    {'name': option} for option in options
-                ]
-
-            images = self._get_product_images(product)
-            if images:
-                product_data['product']['images'] = images
-
-            for variant in product.product_variant_ids:
-                price = self._get_price(variant, config)
-                variant_data = {
-                    'price': str(price),
-                    'sku': variant.default_code or '',
-                    'inventory_management': 'shopify',
-                    'inventory_policy': 'continue' if config.allow_backorder else 'deny',
-                }
-
-                # Attribuutwaarden als option1/2/3 alleen bij producten met attributen
-                if heeft_attributen:
-                    option_values = self._get_variant_option_values(variant)
-                    variant_data.update(option_values)
-
-                if hasattr(variant, 'barcode') and variant.barcode:
-                    variant_data['barcode'] = variant.barcode
-                if hasattr(product, 'weight') and product.weight:
-                    variant_data['weight'] = product.weight
-                    variant_data['weight_unit'] = 'kg'
-                if variant.shopify_variant_id:
-                    variant_data['id'] = variant.shopify_variant_id
-
-                product_data['product']['variants'].append(variant_data)
-
             if shopify_product_id:
-                url = f"{config.shop_url}/admin/api/2025-01/products/{shopify_product_id}.json"
-                response = requests.put(
-                    url,
-                    json=product_data,
-                    headers=config._get_headers(),
-                    timeout=15
+                return self._update_product_graphql(
+                    config, product, shopify_product_id,
+                    vendor, tags, body_html, options, heeft_attributen
                 )
             else:
-                url = f"{config.shop_url}/admin/api/2025-01/products.json"
-                response = requests.post(
-                    url,
-                    json=product_data,
-                    headers=config._get_headers(),
-                    timeout=15
+                return self._create_product_graphql(
+                    config, product,
+                    vendor, tags, body_html, options, heeft_attributen
                 )
-
-            if response.status_code in (200, 201):
-                shopify_product = response.json().get('product', {})
-                vals = {
-                    'shopify_product_id': str(shopify_product.get('id')),
-                    'shopify_last_sync': fields.Datetime.now(),
-                    'shopify_sync_status': 'synced',
-                    'shopify_sync_error': False,
-                }
-
-                # Koppel varianten terug via slimme matching
-                shopify_variants = shopify_product.get('variants', [])
-                self._match_shopify_variants(product, shopify_variants)
-
-                product.write(vals)
-                _logger.info(f"Product {product.name} gesynchroniseerd naar Shopify")
-
-                if config.sync_inventory:
-                    self.sync_inventory_to_shopify(product_tmpl_id, config)
-
-                return True
-            else:
-                error = response.text[:200]
-                product.write({
-                    'shopify_sync_status': 'error',
-                    'shopify_sync_error': error,
-                })
-                _logger.error(f"Product sync mislukt: {error}")
-                return False
 
         except Exception as e:
             _logger.error(f"Product sync fout: {e}")
@@ -428,3 +346,300 @@ class ShopifySync(models.AbstractModel):
                 'shopify_sync_error': str(e),
             })
             return False
+
+    @api.model
+    def _set_product_status(self, config, shopify_product_id, status, product):
+        """Zet product status via GraphQL."""
+        mutation = """
+        mutation productUpdate($input: ProductInput!) {
+          productUpdate(input: $input) {
+            product {
+              id
+              status
+            }
+            userErrors {
+              field
+              message
+            }
+          }
+        }
+        """
+        variables = {
+            'input': {
+                'id': f"gid://shopify/Product/{shopify_product_id}",
+                'status': status,
+            }
+        }
+        data = config._graphql(mutation, variables)
+        if data:
+            errors = data.get('productUpdate', {}).get('userErrors', [])
+            if errors:
+                _logger.error(f"Product status fout: {errors}")
+                product.write({'shopify_sync_status': 'error', 'shopify_sync_error': str(errors)})
+                return False
+            product.write({
+                'shopify_sync_status': 'synced',
+                'shopify_last_sync': fields.Datetime.now(),
+            })
+            _logger.info(f"Product {product.name} status gezet op {status}")
+            return True
+        return False
+
+    @api.model
+    def _build_variant_input(self, variant, config, heeft_attributen, position=None):
+        """Bouw variant input op voor GraphQL."""
+        price = self._get_price(variant, config)
+        variant_input = {
+            'price': str(price),
+            'sku': variant.default_code or '',
+            'inventoryPolicy': 'CONTINUE' if config.allow_backorder else 'DENY',
+            'inventoryManagement': 'SHOPIFY',
+        }
+
+        if heeft_attributen:
+            option_values = self._get_variant_option_values(variant)
+            if 'option1' in option_values:
+                variant_input['option1'] = option_values['option1']
+            if 'option2' in option_values:
+                variant_input['option2'] = option_values['option2']
+            if 'option3' in option_values:
+                variant_input['option3'] = option_values['option3']
+
+        if hasattr(variant, 'barcode') and variant.barcode:
+            variant_input['barcode'] = variant.barcode
+
+        if variant.shopify_variant_id:
+            variant_input['id'] = f"gid://shopify/ProductVariant/{variant.shopify_variant_id}"
+
+        if position is not None:
+            variant_input['position'] = position + 1
+
+        return variant_input
+
+    @api.model
+    def _create_product_graphql(self, config, product, vendor, tags, body_html, options, heeft_attributen):
+        """Maak nieuw product aan via GraphQL."""
+        mutation = """
+        mutation productCreate($input: ProductInput!, $media: [CreateMediaInput!]) {
+          productCreate(input: $input, media: $media) {
+            product {
+              id
+              legacyResourceId
+              variants(first: 100) {
+                edges {
+                  node {
+                    id
+                    legacyResourceId
+                    sku
+                    selectedOptions {
+                      name
+                      value
+                    }
+                    inventoryItem {
+                      id
+                      legacyResourceId
+                    }
+                  }
+                }
+              }
+            }
+            userErrors {
+              field
+              message
+            }
+          }
+        }
+        """
+
+        product_input = {
+            'title': product.name,
+            'descriptionHtml': body_html,
+            'vendor': vendor,
+            'productType': product.categ_id.name or '',
+            'status': 'ACTIVE',
+            'tags': tags,
+            'variants': [],
+        }
+
+        if options:
+            product_input['options'] = options
+
+        for i, variant in enumerate(product.product_variant_ids):
+            variant_input = self._build_variant_input(variant, config, heeft_attributen, i)
+            product_input['variants'].append(variant_input)
+
+        # Afbeeldingen
+        media_input = []
+        images = self._get_product_images(product)
+        for img_data in images:
+            media_input.append({
+                'mediaContentType': 'IMAGE',
+                'originalSource': f"data:image/jpeg;base64,{img_data}",
+            })
+
+        variables = {'input': product_input}
+        if media_input:
+            variables['media'] = media_input
+
+        data = config._graphql(mutation, variables)
+        if data:
+            errors = data.get('productCreate', {}).get('userErrors', [])
+            if errors:
+                _logger.error(f"Product aanmaken fout: {errors}")
+                product.write({'shopify_sync_status': 'error', 'shopify_sync_error': str(errors)})
+                return False
+
+            shopify_product = data.get('productCreate', {}).get('product', {})
+            shopify_product_id = shopify_product.get('legacyResourceId')
+
+            # Koppel varianten terug
+            shopify_variants = [
+                edge['node']
+                for edge in shopify_product.get('variants', {}).get('edges', [])
+            ]
+            self._match_shopify_variants_graphql(product, shopify_variants)
+
+            product.write({
+                'shopify_product_id': str(shopify_product_id),
+                'shopify_last_sync': fields.Datetime.now(),
+                'shopify_sync_status': 'synced',
+                'shopify_sync_error': False,
+            })
+            _logger.info(f"Product {product.name} aangemaakt in Shopify: {shopify_product_id}")
+
+            if config.sync_inventory:
+                self.sync_inventory_to_shopify(product.id, config)
+
+            return True
+        return False
+
+    @api.model
+    def _update_product_graphql(self, config, product, shopify_product_id, vendor, tags, body_html, options, heeft_attributen):
+        """Bestaand product bijwerken via GraphQL."""
+        mutation = """
+        mutation productUpdate($input: ProductInput!) {
+          productUpdate(input: $input) {
+            product {
+              id
+              legacyResourceId
+              variants(first: 100) {
+                edges {
+                  node {
+                    id
+                    legacyResourceId
+                    sku
+                    selectedOptions {
+                      name
+                      value
+                    }
+                    inventoryItem {
+                      id
+                      legacyResourceId
+                    }
+                  }
+                }
+              }
+            }
+            userErrors {
+              field
+              message
+            }
+          }
+        }
+        """
+
+        product_input = {
+            'id': f"gid://shopify/Product/{shopify_product_id}",
+            'title': product.name,
+            'descriptionHtml': body_html,
+            'vendor': vendor,
+            'productType': product.categ_id.name or '',
+            'status': 'ACTIVE',
+            'tags': tags,
+            'variants': [],
+        }
+
+        if options:
+            product_input['options'] = options
+
+        for i, variant in enumerate(product.product_variant_ids):
+            variant_input = self._build_variant_input(variant, config, heeft_attributen, i)
+            product_input['variants'].append(variant_input)
+
+        data = config._graphql(mutation, {'input': product_input})
+        if data:
+            errors = data.get('productUpdate', {}).get('userErrors', [])
+            if errors:
+                _logger.error(f"Product bijwerken fout: {errors}")
+                product.write({'shopify_sync_status': 'error', 'shopify_sync_error': str(errors)})
+                return False
+
+            shopify_product = data.get('productUpdate', {}).get('product', {})
+            shopify_variants = [
+                edge['node']
+                for edge in shopify_product.get('variants', {}).get('edges', [])
+            ]
+            self._match_shopify_variants_graphql(product, shopify_variants)
+
+            product.write({
+                'shopify_last_sync': fields.Datetime.now(),
+                'shopify_sync_status': 'synced',
+                'shopify_sync_error': False,
+            })
+            _logger.info(f"Product {product.name} bijgewerkt in Shopify")
+
+            if config.sync_inventory:
+                self.sync_inventory_to_shopify(product.id, config)
+
+            return True
+        return False
+
+    @api.model
+    def _match_shopify_variants_graphql(self, product, shopify_variants):
+        """Koppel GraphQL Shopify varianten terug aan Odoo varianten."""
+        shopify_by_sku = {}
+        shopify_by_options = {}
+
+        for sv in shopify_variants:
+            sku = sv.get('sku', '')
+            if sku:
+                shopify_by_sku[sku] = sv
+            option_parts = [
+                opt['value']
+                for opt in sv.get('selectedOptions', [])
+                if opt['value'] != 'Default Title'
+            ]
+            if option_parts:
+                option_key = '|'.join(option_parts)
+                shopify_by_options[option_key] = sv
+
+        for variant in product.product_variant_ids:
+            matched = None
+
+            # 1. Match op bestaand shopify_variant_id
+            if variant.shopify_variant_id:
+                for sv in shopify_variants:
+                    legacy_id = sv.get('legacyResourceId')
+                    if str(legacy_id) == str(variant.shopify_variant_id):
+                        matched = sv
+                        break
+
+            # 2. Match op SKU
+            if not matched and variant.default_code:
+                matched = shopify_by_sku.get(variant.default_code)
+
+            # 3. Match op attribuutwaarden
+            if not matched:
+                option_key = self._get_variant_option_key(variant)
+                if option_key:
+                    matched = shopify_by_options.get(option_key)
+
+            if matched:
+                inventory_item_legacy_id = matched.get('inventoryItem', {}).get('legacyResourceId', '')
+                variant.write({
+                    'shopify_variant_id': str(matched.get('legacyResourceId')),
+                    'shopify_inventory_item_id': str(inventory_item_legacy_id),
+                })
+                _logger.info(f"Variant {variant.name} gekoppeld: variant={matched.get('legacyResourceId')}, inventory={inventory_item_legacy_id}")
+            else:
+                _logger.warning(f"Geen Shopify variant gevonden voor {variant.name}")
