@@ -47,7 +47,6 @@ class ShopifyCarrierController(http.Controller):
             data = request.httprequest.data
             hmac_header = request.httprequest.headers.get('X-Shopify-Hmac-Sha256', '')
 
-            # HMAC verificatie
             if not self._verify_carrier_request(data, hmac_header):
                 _logger.warning("CarrierService HMAC verificatie mislukt")
                 return request.make_response(
@@ -74,7 +73,6 @@ class ShopifyCarrierController(http.Controller):
                     status=200
                 )
 
-            # Bereken beschikbare carriers
             rates = request.env['shopify.carrier.service'].sudo()._get_available_rates(
                 destination, items, currency, config
             )
