@@ -8,3 +8,6 @@ from . import shopify_sync
 from . import shopify_order_import
 from . import shopify_stock
 from . import shopify_location
+from . import shopify_oauth
+from . import shopify_webhooks
+from . import shopify_carrier_service
