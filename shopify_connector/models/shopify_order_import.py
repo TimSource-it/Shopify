@@ -109,7 +109,6 @@ class ShopifyOrderImport(models.AbstractModel):
             ], limit=1)
 
         if not partner:
-            # Nogmaals controleren na lock
             self.env.cr.execute(
                 "SELECT id FROM res_partner WHERE shopify_customer_id = %s",
                 (shopify_customer_id,)
@@ -144,7 +143,6 @@ class ShopifyOrderImport(models.AbstractModel):
                 partner = self.env['res.partner'].create(vals)
                 _logger.info(f"Nieuwe klant aangemaakt: {partner.name}")
             except Exception as e:
-                # Mogelijk toch dubbel door race condition — zoek opnieuw
                 _logger.warning(f"Klant aanmaak mislukt, opnieuw zoeken: {e}")
                 partner = self.env['res.partner'].search([
                     ('shopify_customer_id', '=', shopify_customer_id)
@@ -212,24 +210,42 @@ class ShopifyOrderImport(models.AbstractModel):
 
     @api.model
     def _add_shipping_lines(self, order, order_data, config):
-        """Voeg verzendkosten toe als orderregel."""
+        """Voeg verzendkosten toe als orderregel en koppel aan Odoo carrier."""
         shipping_lines = order_data.get('shipping_lines', [])
         if not shipping_lines:
             return
+
         shipping_product = self._get_or_create_shipping_product()
+
         for shipping in shipping_lines:
             price = float(shipping.get('price', 0))
-            if price <= 0:
-                continue
-            self.env['sale.order.line'].create({
-                'order_id': order.id,
-                'product_id': shipping_product.id,
-                'name': shipping.get('title', 'Verzendkosten'),
-                'product_uom_qty': 1,
-                'price_unit': price,
-                'tax_ids': [(5, 0, 0)],
-            })
-            _logger.info(f"Verzendkosten toegevoegd: {shipping.get('title')} € {price}")
+            title = shipping.get('title', 'Verzendkosten')
+
+            # Probeer Odoo carrier te vinden op basis van naam
+            carrier = self.env['delivery.carrier'].search([
+                ('name', 'ilike', title),
+                ('active', '=', True),
+            ], limit=1)
+
+            # Als carrier gevonden — koppel aan order
+            if carrier and not order.carrier_id:
+                order.write({'carrier_id': carrier.id})
+                _logger.info(f"Carrier '{carrier.name}' gekoppeld aan order {order.name}")
+
+            # Voeg verzendkosten toe als orderregel als prijs > 0
+            if price > 0:
+                self.env['sale.order.line'].create({
+                    'order_id': order.id,
+                    'product_id': shipping_product.id,
+                    'name': title,
+                    'product_uom_qty': 1,
+                    'price_unit': price,
+                    'tax_ids': [(5, 0, 0)],
+                })
+                _logger.info(f"Verzendkosten toegevoegd: {title} € {price}")
+            elif carrier:
+                # Gratis verzending — carrier koppelen, geen orderregel
+                _logger.info(f"Gratis verzending via '{carrier.name}' voor order {order.name}")
 
     @api.model
     def _add_discount_lines(self, order, order_data, config):
@@ -259,7 +275,6 @@ class ShopifyOrderImport(models.AbstractModel):
         fulfillment_status = order_data.get('fulfillment_status', '') or 'unfulfilled'
 
         # Lock op database niveau om race conditions te voorkomen
-        # tussen webhook en cron die tegelijk dezelfde order verwerken
         self.env.cr.execute(
             "SELECT id FROM sale_order WHERE shopify_order_id = %s FOR UPDATE SKIP LOCKED",
             (shopify_order_id,)
@@ -284,8 +299,6 @@ class ShopifyOrderImport(models.AbstractModel):
             _logger.info(f"Bestelling {shopify_order_number} bijgewerkt")
             return existing
 
-        # Als de lock niet verkregen kon worden betekent dat een ander
-        # proces bezig is met dezelfde order — sla over
         if locked_row is None and not existing:
             self.env.cr.execute(
                 "SELECT id FROM sale_order WHERE shopify_order_id = %s",
