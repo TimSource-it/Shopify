@@ -227,10 +227,13 @@ class ShopifyOrderImport(models.AbstractModel):
                 ('active', '=', True),
             ], limit=1)
 
-            # Als carrier gevonden — koppel aan order
-            if carrier and not order.carrier_id:
-                order.write({'carrier_id': carrier.id})
-                _logger.info(f"Carrier '{carrier.name}' gekoppeld aan order {order.name}")
+ # Als carrier gevonden — koppel aan order (alleen als nog in draft)
+            if carrier and not order.carrier_id and order.state == 'draft':
+                try:
+                    order.write({'carrier_id': carrier.id})
+                    _logger.info(f"Carrier '{carrier.name}' gekoppeld aan order {order.name}")
+                except Exception as e:
+                    _logger.warning(f"Carrier koppelen mislukt voor {order.name}: {e}")
 
             # Voeg verzendkosten toe als orderregel als prijs > 0
             if price > 0:
