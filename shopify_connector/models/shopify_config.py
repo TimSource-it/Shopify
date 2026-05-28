@@ -264,7 +264,24 @@ class ShopifyConfig(models.Model):
                 _logger.info(f"CarrierService geregistreerd voor {self.shop_name}: {carrier_service_id}")
                 return True
             else:
-                _logger.error(f"CarrierService registratie mislukt: {response.text[:200]}")
+                error_data = response.json()
+                error_msg = error_data.get('errors', {})
+                if 'base' in error_msg:
+                    error_text = error_msg['base'][0] if error_msg['base'] else str(error_msg)
+                else:
+                    error_text = str(error_msg)
+
+                _logger.warning(f"CarrierService registratie mislukt voor {self.shop_name}: {error_text}")
+
+                self.message_post(
+                    body=(
+                        f"⚠️ Live verzendtarieven niet beschikbaar: {error_text}. "
+                        f"Stel verzendmethodes handmatig in via Shopify → Instellingen → Verzending en bezorging. "
+                        f"Alle overige functies van de koppeling werken normaal."
+                    ),
+                    message_type='comment',
+                    subtype_xmlid='mail.mt_note',
+                )
                 return False
 
         except Exception as e:
