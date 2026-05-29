@@ -49,10 +49,15 @@ class ShopifyWebhookController(http.Controller):
                     lambda i: i.state == 'posted' and i.move_type == 'out_invoice'
                 )
                 if invoices:
-                    for invoice in invoices:
-                        refund = invoice._reverse_moves()
-                        refund.action_post()
-                        _logger.info(f"Credit nota aangemaakt voor {invoice.name}")
+                    # Controleer of er al een credit nota bestaat
+                    existing_refunds = order.invoice_ids.filtered(
+                        lambda i: i.move_type == 'out_refund'
+                    )
+                    if not existing_refunds:
+                        for invoice in invoices:
+                            refund = invoice._reverse_moves()
+                            refund.action_post()
+                            _logger.info(f"Credit nota aangemaakt voor {invoice.name}")
 
                 for picking in order.picking_ids.filtered(lambda p: p.state not in ('done', 'cancel')):
                     picking.action_cancel()
@@ -317,7 +322,6 @@ class ShopifyWebhookController(http.Controller):
             if not config:
                 return request.make_response('OK', status=200)
 
-            # Haal order op
             order_id = str(payload.get('order_id', ''))
             shopify_return_id = str(payload.get('id', ''))
 
@@ -329,13 +333,9 @@ class ShopifyWebhookController(http.Controller):
                 _logger.warning(f"Order niet gevonden voor retour: {order_id}")
                 return request.make_response('OK', status=200)
 
-            # Sla het Shopify return ID op
             order.sudo().write({'shopify_return_id': shopify_return_id})
 
-            # Haal retourregels op
             return_line_items = payload.get('return_line_items', [])
-
-            # Maak retourlevering aan in Odoo
             self._create_return_picking(order, return_line_items, config)
 
             _logger.info(f"Retour aangevraagd voor order {order.name}: {shopify_return_id}")
@@ -401,16 +401,18 @@ class ShopifyWebhookController(http.Controller):
                 _logger.warning(f"Order niet gevonden voor refund: {order_id}")
                 return request.make_response('OK', status=200)
 
-            # Update financial status
             order.sudo().write({'shopify_financial_status': 'refunded'})
 
-            # Verwerk de terugbetaling als er geen retour is aangevraagd
-            # (bijv. terugbetaling zonder fysieke retour)
-            if not order.shopify_return_id:
+            # Alleen credit nota aanmaken als er nog geen bestaat
+            existing_refunds = order.invoice_ids.filtered(
+                lambda i: i.move_type == 'out_refund'
+            )
+            if not existing_refunds and not order.shopify_return_id:
                 importer = request.env['shopify.order.import'].sudo()
                 importer._process_refund(order, config)
-
-            _logger.info(f"Refund verwerkt voor order {order.name}")
+                _logger.info(f"Refund verwerkt voor order {order.name}")
+            else:
+                _logger.info(f"Refund ontvangen voor {order.name} — credit nota al aanwezig of retour actief")
 
             return request.make_response('OK', status=200)
         except Exception as e:
@@ -420,7 +422,6 @@ class ShopifyWebhookController(http.Controller):
     def _create_return_picking(self, order, return_line_items, config):
         """Maak een retourlevering aan in Odoo op basis van Shopify retourverzoek."""
         try:
-            # Zoek de originele levering
             original_picking = order.picking_ids.filtered(
                 lambda p: p.state == 'done' and p.picking_type_code == 'outgoing'
             )
@@ -434,7 +435,6 @@ class ShopifyWebhookController(http.Controller):
 
             original_picking = original_picking[0]
 
-            # Gebruik Odoo's ingebouwde return wizard
             return_wizard = request.env['stock.return.picking'].sudo().with_context(
                 active_id=original_picking.id,
                 active_model='stock.picking',
@@ -442,18 +442,15 @@ class ShopifyWebhookController(http.Controller):
                 'picking_id': original_picking.id,
             })
 
-            # Pas hoeveelheden aan op basis van Shopify retourregels
             if return_line_items:
                 for return_line in return_wizard.product_return_moves:
                     product = return_line.product_id
-                    # Zoek het overeenkomende Shopify line item
                     for shopify_line in return_line_items:
                         variant_id = str(shopify_line.get('line_item', {}).get('variant_id', ''))
                         if str(product.shopify_variant_id or '') == variant_id:
                             return_line.quantity = shopify_line.get('quantity', 0)
                             break
 
-            # Maak de retourlevering aan
             result = return_wizard.create_returns()
             return_picking_id = result.get('res_id')
 
