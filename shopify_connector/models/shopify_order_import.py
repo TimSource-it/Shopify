@@ -1,5 +1,4 @@
 from odoo import models, fields, api
-import requests
 import logging
 
 _logger = logging.getLogger(__name__)
@@ -18,7 +17,6 @@ class ShopifyOrderImport(models.AbstractModel):
 
     @api.model
     def _should_confirm_order(self, config, financial_status):
-        """Bepaal of de order bevestigd moet worden op basis van de instelling."""
         if config.confirm_order_on == 'always':
             return True
         if config.confirm_order_on == 'never':
@@ -31,7 +29,6 @@ class ShopifyOrderImport(models.AbstractModel):
 
     @api.model
     def _create_invoice(self, order, config):
-        """Maak een factuur aan voor de order."""
         if not config._account_available():
             return False
         if config.invoice_policy == 'never':
@@ -54,7 +51,6 @@ class ShopifyOrderImport(models.AbstractModel):
 
     @api.model
     def _register_payment(self, invoice, config):
-        """Registreer betaling via de tussenrekening."""
         try:
             if not config._account_available():
                 return
@@ -85,7 +81,6 @@ class ShopifyOrderImport(models.AbstractModel):
 
     @api.model
     def _get_or_create_partner(self, customer_data, shipping_address=None):
-        """Zoek of maak een klant aan in Odoo."""
         if not customer_data:
             return self.env['res.partner'].browse(1)
 
@@ -156,7 +151,6 @@ class ShopifyOrderImport(models.AbstractModel):
 
     @api.model
     def _get_product_by_variant_id(self, shopify_variant_id):
-        """Zoek product op basis van Shopify variant ID."""
         if not shopify_variant_id:
             return False
         return self.env['product.product'].search([
@@ -165,7 +159,6 @@ class ShopifyOrderImport(models.AbstractModel):
 
     @api.model
     def _get_or_create_shipping_product(self):
-        """Zoek of maak het verzendkostenproduct aan."""
         product = self.env['product.product'].search([
             ('default_code', '=', 'SHOPIFY-SHIPPING')
         ], limit=1)
@@ -176,12 +169,10 @@ class ShopifyOrderImport(models.AbstractModel):
                 'type': 'service',
                 'invoice_policy': 'order',
             })
-            _logger.info("Verzendkostenproduct aangemaakt: SHOPIFY-SHIPPING")
         return product
 
     @api.model
     def _get_or_create_discount_product(self):
-        """Zoek of maak het kortingsproduct aan."""
         product = self.env['product.product'].search([
             ('default_code', '=', 'SHOPIFY-DISCOUNT')
         ], limit=1)
@@ -192,12 +183,10 @@ class ShopifyOrderImport(models.AbstractModel):
                 'type': 'service',
                 'invoice_policy': 'order',
             })
-            _logger.info("Kortingsproduct aangemaakt: SHOPIFY-DISCOUNT")
         return product
 
     @api.model
     def _get_tax_ids(self, product, config):
-        """Bepaal de BTW voor een orderregel."""
         if product and product.taxes_id:
             return [(6, 0, product.taxes_id.ids)]
         if config.tax_id and config._account_available():
@@ -206,7 +195,6 @@ class ShopifyOrderImport(models.AbstractModel):
 
     @api.model
     def _add_shipping_lines(self, order, order_data, config):
-        """Voeg verzendkosten toe als orderregel en koppel aan Odoo carrier."""
         shipping_lines = order_data.get('shipping_lines', [])
         if not shipping_lines:
             return
@@ -225,7 +213,6 @@ class ShopifyOrderImport(models.AbstractModel):
             if carrier and not order.carrier_id and order.state == 'draft':
                 try:
                     order.write({'carrier_id': carrier.id})
-                    _logger.info(f"Carrier '{carrier.name}' gekoppeld aan order {order.name}")
                 except Exception as e:
                     _logger.warning(f"Carrier koppelen mislukt voor {order.name}: {e}")
 
@@ -238,13 +225,9 @@ class ShopifyOrderImport(models.AbstractModel):
                     'price_unit': price,
                     'tax_ids': [(5, 0, 0)],
                 })
-                _logger.info(f"Verzendkosten toegevoegd: {title} € {price}")
-            elif carrier:
-                _logger.info(f"Gratis verzending via '{carrier.name}' voor order {order.name}")
 
     @api.model
     def _add_discount_lines(self, order, order_data, config):
-        """Voeg kortingen toe als negatieve orderregel."""
         total_discounts = float(order_data.get('total_discounts', 0))
         if total_discounts <= 0:
             return
@@ -259,11 +242,9 @@ class ShopifyOrderImport(models.AbstractModel):
             'price_unit': -total_discounts,
             'tax_ids': [(5, 0, 0)],
         })
-        _logger.info(f"Korting toegevoegd: -{total_discounts} ({codes})")
 
     @api.model
     def _import_order(self, order_data, config):
-        """Importeer een enkele Shopify bestelling als verkooporder."""
         shopify_order_id = str(order_data.get('id', ''))
         shopify_order_number = order_data.get('order_number', '')
         financial_status = order_data.get('financial_status', '')
@@ -286,10 +267,8 @@ class ShopifyOrderImport(models.AbstractModel):
             })
             if existing.state == 'draft' and self._should_confirm_order(config, financial_status):
                 existing.action_confirm()
-                _logger.info(f"Order {shopify_order_number} alsnog bevestigd na statuswijziging")
                 if config.invoice_policy == 'on_confirm':
                     self._create_invoice(existing, config)
-            _logger.info(f"Bestelling {shopify_order_number} bijgewerkt")
             return existing
 
         if locked_row is None and not existing:
@@ -298,7 +277,6 @@ class ShopifyOrderImport(models.AbstractModel):
                 (shopify_order_id,)
             )
             if self.env.cr.fetchone():
-                _logger.info(f"Order {shopify_order_number} al verwerkt door ander proces")
                 return False
 
         customer_data = order_data.get('customer', {})
@@ -332,7 +310,6 @@ class ShopifyOrderImport(models.AbstractModel):
             if product:
                 line_vals['product_id'] = product.id
                 line_vals['name'] = product.name
-
                 odoo_price = self.env['shopify.sync']._get_price(product, config)
                 if round(odoo_price, 2) != round(shopify_price, 2):
                     warnings.append(
@@ -374,7 +351,6 @@ class ShopifyOrderImport(models.AbstractModel):
 
         if self._should_confirm_order(config, financial_status):
             order.action_confirm()
-            _logger.info(f"Order {shopify_order_number} automatisch bevestigd")
             if config.invoice_policy == 'on_confirm':
                 self._create_invoice(order, config)
 
@@ -383,14 +359,11 @@ class ShopifyOrderImport(models.AbstractModel):
 
     @api.model
     def _process_refund(self, order, config):
-        """Verwerk een terugbetaling op basis van de instelling."""
         if config.refund_policy == 'manual':
-            _logger.info(f"Retour voor {order.name} moet handmatig verwerkt worden")
             return
         if config.refund_policy == 'cancel':
             if order.state not in ('done', 'cancel'):
                 order.action_cancel()
-                _logger.info(f"Order {order.name} geannuleerd wegens terugbetaling")
             return
         if config.refund_policy == 'credit_note':
             if not config._account_available():
@@ -402,13 +375,11 @@ class ShopifyOrderImport(models.AbstractModel):
                 for invoice in invoices:
                     refund = invoice._reverse_moves()
                     refund.action_post()
-                    _logger.info(f"Credit nota aangemaakt voor {invoice.name}")
             except Exception as e:
                 _logger.error(f"Credit nota aanmaken mislukt: {e}")
 
     @api.model
     def import_orders_from_shopify(self, config=None, since_id=None):
-        """Importeer bestellingen van Shopify via GraphQL."""
         if not config:
             config = self._get_config()
         if not config:
@@ -416,7 +387,6 @@ class ShopifyOrderImport(models.AbstractModel):
             return False
 
         try:
-            # Bouw cursor-gebaseerde paginering op
             after_cursor = None
             if config.last_order_sync:
                 since = config.last_order_sync.strftime('%Y-%m-%dT%H:%M:%SZ')
@@ -439,7 +409,7 @@ class ShopifyOrderImport(models.AbstractModel):
                       node {
                         id
                         legacyResourceId
-                        orderNumber
+                        name
                         displayFinancialStatus
                         displayFulfillmentStatus
                         createdAt
@@ -545,7 +515,6 @@ class ShopifyOrderImport(models.AbstractModel):
     @api.model
     def _normalize_graphql_order(self, node):
         """Converteer GraphQL order node naar het formaat dat _import_order verwacht."""
-        # Financial status normaliseren
         financial_status_map = {
             'PAID': 'paid',
             'PENDING': 'pending',
@@ -571,7 +540,6 @@ class ShopifyOrderImport(models.AbstractModel):
             node.get('displayFulfillmentStatus', ''), 'unfulfilled'
         )
 
-        # Klant normaliseren
         customer = node.get('customer') or {}
         customer_data = {}
         if customer:
@@ -586,11 +554,9 @@ class ShopifyOrderImport(models.AbstractModel):
                 ),
             }
 
-        # Verzendadres normaliseren
         shipping_addr = node.get('shippingAddress') or {}
         shipping_address = self._normalize_address(shipping_addr)
 
-        # Orderregels normaliseren
         line_items = []
         for edge in node.get('lineItems', {}).get('edges', []):
             item = edge['node']
@@ -603,7 +569,6 @@ class ShopifyOrderImport(models.AbstractModel):
                 'variant_id': variant.get('legacyResourceId', ''),
             })
 
-        # Verzendkosten normaliseren
         shipping_lines = []
         for edge in node.get('shippingLines', {}).get('edges', []):
             shipping = edge['node']
@@ -613,16 +578,18 @@ class ShopifyOrderImport(models.AbstractModel):
                 'price': price,
             })
 
-        # Kortingen normaliseren
         total_discounts = node.get('totalDiscountsSet', {}).get('shopMoney', {}).get('amount', '0')
         discount_codes = [
             {'code': code}
             for code in node.get('discountCodes', [])
         ]
 
+        # name bevat het ordernummer als '#1001' — haal het # weg
+        order_number = node.get('name', '').replace('#', '')
+
         return {
             'id': node.get('legacyResourceId', ''),
-            'order_number': node.get('orderNumber', ''),
+            'order_number': order_number,
             'financial_status': financial_status,
             'fulfillment_status': fulfillment_status,
             'customer': customer_data,
@@ -635,7 +602,6 @@ class ShopifyOrderImport(models.AbstractModel):
 
     @api.model
     def _normalize_address(self, addr):
-        """Normaliseer een adres van GraphQL naar REST formaat."""
         if not addr:
             return {}
         return {
@@ -648,7 +614,6 @@ class ShopifyOrderImport(models.AbstractModel):
 
     @api.model
     def cron_import_orders(self):
-        """Cron job: importeer nieuwe bestellingen."""
         config = self._get_config()
         if not config or not config.sync_orders:
             return
