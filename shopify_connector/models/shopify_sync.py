@@ -72,12 +72,13 @@ class ShopifySync(models.AbstractModel):
 
     @api.model
     def _get_shopify_sellable_qty(self, variant, warehouse):
+        """Haal fysieke voorraad op — Shopify berekent zelf de beschikbare hoeveelheid."""
         location = warehouse.lot_stock_id
         quants = self.env['stock.quant'].search([
             ('product_id', '=', variant.id),
             ('location_id', '=', location.id),
         ])
-        qty = sum(quants.mapped('available_quantity'))
+        qty = sum(quants.mapped('quantity'))
         return max(0, int(qty))
 
     @api.model
@@ -193,7 +194,7 @@ class ShopifySync(models.AbstractModel):
                 if not variant.shopify_inventory_item_id:
                     continue
                 try:
-                    qty = max(0, int(variant.qty_available))
+                    qty = max(0, int(variant.qty_on_hand))
                     self._set_inventory_graphql(config, variant.shopify_inventory_item_id, fallback_location, qty)
                 except Exception as e:
                     _logger.error(f"Voorraad sync fout: {e}")
