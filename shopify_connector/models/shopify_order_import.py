@@ -67,7 +67,7 @@ class ShopifyOrderImport(models.AbstractModel):
                 'partner_id': invoice.partner_id.id,
                 'journal_id': payment_method.journal_id.id,
                 'payment_method_line_id': payment_method.id,
-                'ref': invoice.name,
+                'memo': invoice.name,
             }
             payment = self.env['account.payment'].create(payment_vals)
             payment.action_post()
@@ -375,6 +375,7 @@ class ShopifyOrderImport(models.AbstractModel):
                 for invoice in invoices:
                     refund = invoice._reverse_moves()
                     refund.action_post()
+                    _logger.info(f"Credit nota aangemaakt voor {invoice.name}")
             except Exception as e:
                 _logger.error(f"Credit nota aanmaken mislukt: {e}")
 
@@ -514,7 +515,6 @@ class ShopifyOrderImport(models.AbstractModel):
 
     @api.model
     def _normalize_graphql_order(self, node):
-        """Converteer GraphQL order node naar het formaat dat _import_order verwacht."""
         financial_status_map = {
             'PAID': 'paid',
             'PENDING': 'pending',
@@ -584,7 +584,6 @@ class ShopifyOrderImport(models.AbstractModel):
             for code in node.get('discountCodes', [])
         ]
 
-        # name bevat het ordernummer als '#1001' — haal het # weg
         order_number = node.get('name', '').replace('#', '')
 
         return {
