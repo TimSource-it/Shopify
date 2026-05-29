@@ -99,7 +99,6 @@ class ShopifyConfig(models.Model):
     last_inventory_sync = fields.Datetime(string='Laatste voorraad sync')
 
     def _account_available(self):
-        """Controleer of de account module beschikbaar is."""
         return 'account.account' in self.env
 
     @api.depends('shop_name')
@@ -113,7 +112,7 @@ class ShopifyConfig(models.Model):
     def _graphql(self, query, variables=None):
         """Voer een GraphQL query of mutation uit."""
         self.ensure_one()
-        url = f"{self.shop_url}/admin/api/2025-01/graphql.json"
+        url = f"{self.shop_url}/admin/api/2026-04/graphql.json"
         payload = {'query': query}
         if variables:
             payload['variables'] = variables
@@ -138,7 +137,6 @@ class ShopifyConfig(models.Model):
             return None
 
     def action_set_accounting_defaults(self):
-        """Stel standaard boekhouding instellingen in."""
         self.ensure_one()
         vals = {}
 
@@ -253,12 +251,11 @@ class ShopifyConfig(models.Model):
             ('ORDERS_CREATE', f"{base_url}/shopify/webhooks/orders/create"),
             ('ORDERS_UPDATED', f"{base_url}/shopify/webhooks/orders/updated"),
             ('ORDERS_CANCELLED', f"{base_url}/shopify/webhooks/orders/cancelled"),
-            ('RETURNS_CREATE', f"{base_url}/shopify/webhooks/returns/create"),
+            ('RETURNS_REQUEST', f"{base_url}/shopify/webhooks/returns/create"),
             ('RETURNS_UPDATE', f"{base_url}/shopify/webhooks/returns/update"),
             ('REFUNDS_CREATE', f"{base_url}/shopify/webhooks/refunds/create"),
         ]
 
-        # Haal bestaande webhooks op om duplicaten te voorkomen
         existing_query = """
         {
           webhookSubscriptions(first: 50) {
@@ -284,7 +281,6 @@ class ShopifyConfig(models.Model):
                 callback = node.get('endpoint', {}).get('callbackUrl', '')
                 existing_webhooks[callback] = node['id']
 
-        # Registreer ontbrekende webhooks
         create_mutation = """
         mutation webhookSubscriptionCreate($topic: WebhookSubscriptionTopic!, $callbackUrl: URL!) {
           webhookSubscriptionCreate(
@@ -330,8 +326,7 @@ class ShopifyConfig(models.Model):
             base_url = self._get_base_url()
             callback_url = f"{base_url}/shopify/carrier/rates"
 
-            # Check via REST want carrier services hebben geen GraphQL equivalent
-            url = f"{self.shop_url}/admin/api/2025-01/carrier_services.json"
+            url = f"{self.shop_url}/admin/api/2026-04/carrier_services.json"
             response = requests.get(url, headers=self._get_headers(), timeout=10)
 
             if response.status_code == 200:
@@ -368,15 +363,9 @@ class ShopifyConfig(models.Model):
                 else:
                     error_text = str(error_msg)
 
-                _logger.warning(f"CarrierService registratie mislukt voor {self.shop_name}: {error_text}")
-                self.message_post(
-                    body=(
-                        f"⚠️ Live verzendtarieven niet beschikbaar: {error_text}. "
-                        f"Stel verzendmethodes handmatig in via Shopify → Instellingen → Verzending en bezorging. "
-                        f"Alle overige functies van de koppeling werken normaal."
-                    ),
-                    message_type='comment',
-                    subtype_xmlid='mail.mt_note',
+                _logger.warning(
+                    f"CarrierService niet beschikbaar voor {self.shop_name}: {error_text}. "
+                    f"Stel verzendmethodes handmatig in via Shopify."
                 )
                 return False
 
@@ -390,7 +379,7 @@ class ShopifyConfig(models.Model):
             if not self.shopify_carrier_service_id:
                 return True
 
-            url = f"{self.shop_url}/admin/api/2025-01/carrier_services/{self.shopify_carrier_service_id}.json"
+            url = f"{self.shop_url}/admin/api/2026-04/carrier_services/{self.shopify_carrier_service_id}.json"
             response = requests.delete(url, headers=self._get_headers(), timeout=10)
 
             if response.status_code in (200, 204):
@@ -557,7 +546,6 @@ class ShopifyConfig(models.Model):
         if not self.access_token:
             raise UserError("Geen access token. Klik eerst op Verbind met Shopify.")
         try:
-            # Test via GraphQL
             query = "{ shop { name } }"
             data = self._graphql(query)
             if data:
