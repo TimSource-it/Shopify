@@ -297,3 +297,179 @@ class ShopifyWebhookController(http.Controller):
         except Exception as e:
             _logger.error(f"orders/cancelled webhook fout: {e}")
             return request.make_response('OK', status=200)
+
+    @http.route('/shopify/webhooks/returns/create',
+                type='http', auth='public', csrf=False, methods=['POST'])
+    def returns_create(self, **kwargs):
+        """Klant heeft een retour aangevraagd via Shopify."""
+        try:
+            data = request.httprequest.data
+            hmac_header = request.httprequest.headers.get('X-Shopify-Hmac-Sha256', '')
+
+            if not self._verify_webhook(data, hmac_header):
+                _logger.warning("Webhook HMAC verificatie mislukt voor returns/create")
+                return request.make_response('Unauthorized', status=401)
+
+            payload = json.loads(data)
+            shop_domain = request.httprequest.headers.get('X-Shopify-Shop-Domain', '')
+            config = self._get_config_for_shop(shop_domain)
+
+            if not config:
+                return request.make_response('OK', status=200)
+
+            # Haal order op
+            order_id = str(payload.get('order_id', ''))
+            shopify_return_id = str(payload.get('id', ''))
+
+            order = request.env['sale.order'].sudo().search([
+                ('shopify_order_id', '=', order_id)
+            ], limit=1)
+
+            if not order:
+                _logger.warning(f"Order niet gevonden voor retour: {order_id}")
+                return request.make_response('OK', status=200)
+
+            # Sla het Shopify return ID op
+            order.sudo().write({'shopify_return_id': shopify_return_id})
+
+            # Haal retourregels op
+            return_line_items = payload.get('return_line_items', [])
+
+            # Maak retourlevering aan in Odoo
+            self._create_return_picking(order, return_line_items, config)
+
+            _logger.info(f"Retour aangevraagd voor order {order.name}: {shopify_return_id}")
+
+            return request.make_response('OK', status=200)
+        except Exception as e:
+            _logger.error(f"returns/create webhook fout: {e}")
+            return request.make_response('OK', status=200)
+
+    @http.route('/shopify/webhooks/returns/update',
+                type='http', auth='public', csrf=False, methods=['POST'])
+    def returns_update(self, **kwargs):
+        """Retour status bijgewerkt in Shopify."""
+        try:
+            data = request.httprequest.data
+            hmac_header = request.httprequest.headers.get('X-Shopify-Hmac-Sha256', '')
+
+            if not self._verify_webhook(data, hmac_header):
+                _logger.warning("Webhook HMAC verificatie mislukt voor returns/update")
+                return request.make_response('Unauthorized', status=401)
+
+            payload = json.loads(data)
+            order_id = str(payload.get('order_id', ''))
+            status = payload.get('status', '')
+
+            order = request.env['sale.order'].sudo().search([
+                ('shopify_order_id', '=', order_id)
+            ], limit=1)
+
+            if order:
+                _logger.info(f"Retour status bijgewerkt voor {order.name}: {status}")
+
+            return request.make_response('OK', status=200)
+        except Exception as e:
+            _logger.error(f"returns/update webhook fout: {e}")
+            return request.make_response('OK', status=200)
+
+    @http.route('/shopify/webhooks/refunds/create',
+                type='http', auth='public', csrf=False, methods=['POST'])
+    def refunds_create(self, **kwargs):
+        """Terugbetaling aangemaakt in Shopify."""
+        try:
+            data = request.httprequest.data
+            hmac_header = request.httprequest.headers.get('X-Shopify-Hmac-Sha256', '')
+
+            if not self._verify_webhook(data, hmac_header):
+                _logger.warning("Webhook HMAC verificatie mislukt voor refunds/create")
+                return request.make_response('Unauthorized', status=401)
+
+            payload = json.loads(data)
+            shop_domain = request.httprequest.headers.get('X-Shopify-Shop-Domain', '')
+            config = self._get_config_for_shop(shop_domain)
+
+            if not config:
+                return request.make_response('OK', status=200)
+
+            order_id = str(payload.get('order_id', ''))
+            order = request.env['sale.order'].sudo().search([
+                ('shopify_order_id', '=', order_id)
+            ], limit=1)
+
+            if not order:
+                _logger.warning(f"Order niet gevonden voor refund: {order_id}")
+                return request.make_response('OK', status=200)
+
+            # Update financial status
+            order.sudo().write({'shopify_financial_status': 'refunded'})
+
+            # Verwerk de terugbetaling als er geen retour is aangevraagd
+            # (bijv. terugbetaling zonder fysieke retour)
+            if not order.shopify_return_id:
+                importer = request.env['shopify.order.import'].sudo()
+                importer._process_refund(order, config)
+
+            _logger.info(f"Refund verwerkt voor order {order.name}")
+
+            return request.make_response('OK', status=200)
+        except Exception as e:
+            _logger.error(f"refunds/create webhook fout: {e}")
+            return request.make_response('OK', status=200)
+
+    def _create_return_picking(self, order, return_line_items, config):
+        """Maak een retourlevering aan in Odoo op basis van Shopify retourverzoek."""
+        try:
+            # Zoek de originele levering
+            original_picking = order.picking_ids.filtered(
+                lambda p: p.state == 'done' and p.picking_type_code == 'outgoing'
+            )
+            if not original_picking:
+                order.message_post(
+                    body="⚠️ Retour aangevraagd via Shopify maar geen voltooide levering gevonden. Verwerk handmatig.",
+                    message_type='comment',
+                    subtype_xmlid='mail.mt_note',
+                )
+                return
+
+            original_picking = original_picking[0]
+
+            # Gebruik Odoo's ingebouwde return wizard
+            return_wizard = request.env['stock.return.picking'].sudo().with_context(
+                active_id=original_picking.id,
+                active_model='stock.picking',
+            ).create({
+                'picking_id': original_picking.id,
+            })
+
+            # Pas hoeveelheden aan op basis van Shopify retourregels
+            if return_line_items:
+                for return_line in return_wizard.product_return_moves:
+                    product = return_line.product_id
+                    # Zoek het overeenkomende Shopify line item
+                    for shopify_line in return_line_items:
+                        variant_id = str(shopify_line.get('line_item', {}).get('variant_id', ''))
+                        if str(product.shopify_variant_id or '') == variant_id:
+                            return_line.quantity = shopify_line.get('quantity', 0)
+                            break
+
+            # Maak de retourlevering aan
+            result = return_wizard.create_returns()
+            return_picking_id = result.get('res_id')
+
+            if return_picking_id:
+                return_picking = request.env['stock.picking'].sudo().browse(return_picking_id)
+                order.message_post(
+                    body=f"📦 Retour aangevraagd via Shopify — retourlevering aangemaakt: {return_picking.name}",
+                    message_type='comment',
+                    subtype_xmlid='mail.mt_note',
+                )
+                _logger.info(f"Retourlevering aangemaakt voor {order.name}: {return_picking.name}")
+
+        except Exception as e:
+            _logger.error(f"Retourlevering aanmaken mislukt voor {order.name}: {e}")
+            order.message_post(
+                body=f"⚠️ Retour aangevraagd via Shopify maar retourlevering aanmaken mislukt: {e}. Verwerk handmatig.",
+                message_type='comment',
+                subtype_xmlid='mail.mt_note',
+            )
