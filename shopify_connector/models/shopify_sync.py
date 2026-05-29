@@ -37,15 +37,16 @@ class ShopifySync(models.AbstractModel):
             except Exception as e:
                 _logger.warning(f"Hoofdafbeelding ophalen mislukt: {e}")
         try:
-            for extra_img in product.product_template_image_ids:
-                if extra_img.image_1920:
-                    try:
-                        img_data = extra_img.image_1920
-                        if isinstance(img_data, bytes):
-                            img_data = img_data.decode('utf-8')
-                        images.append(img_data)
-                    except Exception as e:
-                        _logger.warning(f"Extra afbeelding ophalen mislukt: {e}")
+            if hasattr(product, 'product_template_image_ids'):
+                for extra_img in product.product_template_image_ids:
+                    if extra_img.image_1920:
+                        try:
+                            img_data = extra_img.image_1920
+                            if isinstance(img_data, bytes):
+                                img_data = img_data.decode('utf-8')
+                            images.append(img_data)
+                        except Exception as e:
+                            _logger.warning(f"Extra afbeelding ophalen mislukt: {e}")
         except Exception as e:
             _logger.warning(f"Extra afbeeldingen ophalen mislukt: {e}")
         return images
@@ -242,10 +243,16 @@ class ShopifySync(models.AbstractModel):
             body_html = self._get_description(product)
             heeft_attributen = bool(product.attribute_line_ids)
 
-            return self._sync_product_with_productset(
-                config, product, shopify_product_id,
-                vendor, tags, body_html, heeft_attributen
-            )
+            if heeft_attributen:
+                return self._sync_product_with_variants(
+                    config, product, shopify_product_id,
+                    vendor, tags, body_html
+                )
+            else:
+                return self._sync_simple_product(
+                    config, product, shopify_product_id,
+                    vendor, tags, body_html
+                )
 
         except Exception as e:
             _logger.error(f"Product sync fout: {e}")
@@ -253,18 +260,8 @@ class ShopifySync(models.AbstractModel):
             return False
 
     @api.model
-    def _sync_product_with_productset(self, config, product, shopify_product_id, vendor, tags, body_html, heeft_attributen):
-        """Gebruik productSet voor producten met varianten, productUpdate voor enkelvoudige producten."""
-
-        if heeft_attributen:
-            return self._sync_product_with_variants(config, product, shopify_product_id, vendor, tags, body_html)
-        else:
-            return self._sync_simple_product(config, product, shopify_product_id, vendor, tags, body_html)
-
-    @api.model
     def _sync_simple_product(self, config, product, shopify_product_id, vendor, tags, body_html):
-        """Sync enkelvoudig product — metadata via productUpdate, prijs via productVariantsBulkUpdate."""
-
+        """Sync enkelvoudig product zonder varianten."""
         variant = product.product_variant_ids[0] if product.product_variant_ids else False
         if not variant:
             return False
@@ -272,10 +269,10 @@ class ShopifySync(models.AbstractModel):
         price = self._get_price(variant, config)
 
         if shopify_product_id:
-            # Update bestaand product
+            # Update bestaand enkelvoudig product via productUpdate
             update_mutation = """
-            mutation productUpdate($input: ProductUpdateInput!) {
-              productUpdate(input: $input) {
+            mutation productUpdate($product: ProductUpdateInput!) {
+              productUpdate(product: $product) {
                 product {
                   id
                   legacyResourceId
@@ -306,7 +303,7 @@ class ShopifySync(models.AbstractModel):
                 'status': 'ACTIVE',
                 'tags': tags,
             }
-            data = config._graphql(update_mutation, {'input': update_input})
+            data = config._graphql(update_mutation, {'product': update_input})
             if not data:
                 product.write({'shopify_sync_status': 'error', 'shopify_sync_error': 'productUpdate mislukt'})
                 return False
@@ -331,7 +328,7 @@ class ShopifySync(models.AbstractModel):
                 self._update_variant_price(config, shopify_product_id, variant, price)
 
         else:
-            # Nieuw enkelvoudig product via productSet zonder optionValues
+            # Nieuw enkelvoudig product via productSet
             create_mutation = """
             mutation productSet($synchronous: Boolean!, $input: ProductSetInput!) {
               productSet(synchronous: $synchronous, input: $input) {
@@ -393,7 +390,8 @@ class ShopifySync(models.AbstractModel):
                     'shopify_variant_id': str(sv.get('legacyResourceId')),
                     'shopify_inventory_item_id': str(sv.get('inventoryItem', {}).get('legacyResourceId', '')),
                 })
-                self._update_variant_price(config, shopify_product_id, variant, price)
+                if variant.shopify_variant_id:
+                    self._update_variant_price(config, shopify_product_id, variant, price)
 
         product.write({
             'shopify_product_id': str(shopify_product_id),
@@ -555,8 +553,8 @@ class ShopifySync(models.AbstractModel):
     @api.model
     def _set_product_status(self, config, shopify_product_id, status, product):
         mutation = """
-        mutation productUpdate($input: ProductUpdateInput!) {
-          productUpdate(input: $input) {
+        mutation productUpdate($product: ProductUpdateInput!) {
+          productUpdate(product: $product) {
             product {
               id
               status
@@ -569,7 +567,7 @@ class ShopifySync(models.AbstractModel):
         }
         """
         variables = {
-            'input': {
+            'product': {
                 'id': f"gid://shopify/Product/{shopify_product_id}",
                 'status': status,
             }
