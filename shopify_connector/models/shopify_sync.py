@@ -80,6 +80,76 @@ class ShopifySync(models.AbstractModel):
         return max(0, int(qty))
 
     @api.model
+    def _set_inventory_graphql(self, config, inventory_item_id, location_id, qty):
+        """Stel voorraad in via GraphQL — haal eerst huidige hoeveelheid op voor changeFromQuantity."""
+        # Stap 1: haal huidige hoeveelheid op
+        query = """
+        query getInventoryLevel($inventoryItemId: ID!, $locationId: ID!) {
+          inventoryLevel(
+            inventoryItemId: $inventoryItemId
+            locationId: $locationId
+          ) {
+            quantities(names: ["on_hand"]) {
+              name
+              quantity
+            }
+          }
+        }
+        """
+        current_qty = 0
+        try:
+            data = config._graphql(query, {
+                'inventoryItemId': f"gid://shopify/InventoryItem/{inventory_item_id}",
+                'locationId': f"gid://shopify/Location/{location_id}",
+            })
+            if data and data.get('inventoryLevel'):
+                quantities = data['inventoryLevel'].get('quantities', [])
+                for q in quantities:
+                    if q.get('name') == 'on_hand':
+                        current_qty = q.get('quantity', 0)
+                        break
+        except Exception as e:
+            _logger.warning(f"Huidige voorraad ophalen mislukt, gebruik 0: {e}")
+
+        # Stap 2: stel nieuwe hoeveelheid in
+        mutation = """
+        mutation inventorySetOnHandQuantities($input: InventorySetOnHandQuantitiesInput!) {
+          inventorySetOnHandQuantities(input: $input) {
+            userErrors {
+              field
+              message
+            }
+            inventoryAdjustmentGroup {
+              reason
+              changes {
+                name
+                delta
+              }
+            }
+          }
+        }
+        """
+        variables = {
+            'input': {
+                'reason': 'correction',
+                'setQuantities': [{
+                    'inventoryItemId': f"gid://shopify/InventoryItem/{inventory_item_id}",
+                    'locationId': f"gid://shopify/Location/{location_id}",
+                    'quantity': qty,
+                    'changeFromQuantity': current_qty,
+                }]
+            }
+        }
+        data = config._graphql(mutation, variables)
+        if data:
+            errors = data.get('inventorySetOnHandQuantities', {}).get('userErrors', [])
+            if errors:
+                _logger.error(f"Voorraad GraphQL fout: {errors}")
+                return False
+            return True
+        return False
+
+    @api.model
     def sync_inventory_to_shopify(self, product_tmpl_id, config=None):
         if not config:
             config = self._get_config()
@@ -142,44 +212,6 @@ class ShopifySync(models.AbstractModel):
                     success = False
 
         return success
-
-    @api.model
-    def _set_inventory_graphql(self, config, inventory_item_id, location_id, qty):
-        mutation = """
-        mutation inventorySetOnHandQuantities($input: InventorySetOnHandQuantitiesInput!) {
-          inventorySetOnHandQuantities(input: $input) {
-            userErrors {
-              field
-              message
-            }
-            inventoryAdjustmentGroup {
-              reason
-              changes {
-                name
-                delta
-              }
-            }
-          }
-        }
-        """
-        variables = {
-            'input': {
-                'reason': 'correction',
-                'setQuantities': [{
-                    'inventoryItemId': f"gid://shopify/InventoryItem/{inventory_item_id}",
-                    'locationId': f"gid://shopify/Location/{location_id}",
-                    'quantity': qty,
-                }]
-            }
-        }
-        data = config._graphql(mutation, variables)
-        if data:
-            errors = data.get('inventorySetOnHandQuantities', {}).get('userErrors', [])
-            if errors:
-                _logger.error(f"Voorraad GraphQL fout: {errors}")
-                return False
-            return True
-        return False
 
     @api.model
     def cron_sync_pending_products(self):
@@ -269,7 +301,6 @@ class ShopifySync(models.AbstractModel):
         price = self._get_price(variant, config)
 
         if shopify_product_id:
-            # Update bestaand enkelvoudig product via productUpdate
             update_mutation = """
             mutation productUpdate($product: ProductUpdateInput!) {
               productUpdate(product: $product) {
@@ -323,12 +354,10 @@ class ShopifySync(models.AbstractModel):
                     'shopify_inventory_item_id': str(sv.get('inventoryItem', {}).get('legacyResourceId', '')),
                 })
 
-            # Update prijs via productVariantsBulkUpdate
             if variant.shopify_variant_id:
                 self._update_variant_price(config, shopify_product_id, variant, price)
 
         else:
-            # Nieuw enkelvoudig product via productSet
             create_mutation = """
             mutation productSet($synchronous: Boolean!, $input: ProductSetInput!) {
               productSet(synchronous: $synchronous, input: $input) {
@@ -479,7 +508,6 @@ class ShopifySync(models.AbstractModel):
         if shopify_product_id:
             product_set_input['id'] = f"gid://shopify/Product/{shopify_product_id}"
 
-        # Opties
         options = []
         for line in product.attribute_line_ids[:3]:
             option_values = [{'name': value.name} for value in line.product_template_value_ids]
@@ -487,7 +515,6 @@ class ShopifySync(models.AbstractModel):
         if options:
             product_set_input['productOptions'] = options
 
-        # Varianten
         variants = []
         for variant in product.product_variant_ids:
             price = self._get_price(variant, config)
