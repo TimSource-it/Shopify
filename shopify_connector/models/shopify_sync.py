@@ -254,6 +254,190 @@ class ShopifySync(models.AbstractModel):
 
     @api.model
     def _sync_product_with_productset(self, config, product, shopify_product_id, vendor, tags, body_html, heeft_attributen):
+        """Gebruik productSet voor producten met varianten, productUpdate voor enkelvoudige producten."""
+
+        if heeft_attributen:
+            return self._sync_product_with_variants(config, product, shopify_product_id, vendor, tags, body_html)
+        else:
+            return self._sync_simple_product(config, product, shopify_product_id, vendor, tags, body_html)
+
+    @api.model
+    def _sync_simple_product(self, config, product, shopify_product_id, vendor, tags, body_html):
+        """Sync enkelvoudig product — metadata via productUpdate, prijs via productVariantsBulkUpdate."""
+
+        variant = product.product_variant_ids[0] if product.product_variant_ids else False
+        if not variant:
+            return False
+
+        price = self._get_price(variant, config)
+
+        if shopify_product_id:
+            # Update bestaand product
+            update_mutation = """
+            mutation productUpdate($input: ProductUpdateInput!) {
+              productUpdate(input: $input) {
+                product {
+                  id
+                  legacyResourceId
+                  variants(first: 1) {
+                    nodes {
+                      id
+                      legacyResourceId
+                      inventoryItem {
+                        id
+                        legacyResourceId
+                      }
+                    }
+                  }
+                }
+                userErrors {
+                  field
+                  message
+                }
+              }
+            }
+            """
+            update_input = {
+                'id': f"gid://shopify/Product/{shopify_product_id}",
+                'title': product.name,
+                'descriptionHtml': body_html,
+                'vendor': vendor,
+                'productType': product.categ_id.name or '',
+                'status': 'ACTIVE',
+                'tags': tags,
+            }
+            data = config._graphql(update_mutation, {'input': update_input})
+            if not data:
+                product.write({'shopify_sync_status': 'error', 'shopify_sync_error': 'productUpdate mislukt'})
+                return False
+
+            errors = data.get('productUpdate', {}).get('userErrors', [])
+            if errors:
+                _logger.error(f"productUpdate fout voor {product.name}: {errors}")
+                product.write({'shopify_sync_status': 'error', 'shopify_sync_error': str(errors)})
+                return False
+
+            shopify_product = data.get('productUpdate', {}).get('product', {})
+            shopify_variants = shopify_product.get('variants', {}).get('nodes', [])
+            if shopify_variants:
+                sv = shopify_variants[0]
+                variant.write({
+                    'shopify_variant_id': str(sv.get('legacyResourceId')),
+                    'shopify_inventory_item_id': str(sv.get('inventoryItem', {}).get('legacyResourceId', '')),
+                })
+
+            # Update prijs via productVariantsBulkUpdate
+            if variant.shopify_variant_id:
+                self._update_variant_price(config, shopify_product_id, variant, price)
+
+        else:
+            # Nieuw enkelvoudig product via productSet zonder optionValues
+            create_mutation = """
+            mutation productSet($synchronous: Boolean!, $input: ProductSetInput!) {
+              productSet(synchronous: $synchronous, input: $input) {
+                product {
+                  id
+                  legacyResourceId
+                  variants(first: 1) {
+                    nodes {
+                      id
+                      legacyResourceId
+                      inventoryItem {
+                        id
+                        legacyResourceId
+                      }
+                    }
+                  }
+                }
+                userErrors {
+                  field
+                  message
+                  code
+                }
+              }
+            }
+            """
+            product_set_input = {
+                'title': product.name,
+                'descriptionHtml': body_html,
+                'vendor': vendor,
+                'productType': product.categ_id.name or '',
+                'status': 'ACTIVE',
+                'tags': tags,
+            }
+
+            images = self._get_product_images(product)
+            if images:
+                product_set_input['files'] = [
+                    {'originalSource': f"data:image/jpeg;base64,{img}", 'contentType': 'IMAGE'}
+                    for img in images
+                ]
+
+            data = config._graphql(create_mutation, {'synchronous': True, 'input': product_set_input})
+            if not data:
+                product.write({'shopify_sync_status': 'error', 'shopify_sync_error': 'productSet mislukt'})
+                return False
+
+            errors = data.get('productSet', {}).get('userErrors', [])
+            if errors:
+                _logger.error(f"productSet fout voor {product.name}: {errors}")
+                product.write({'shopify_sync_status': 'error', 'shopify_sync_error': str(errors)})
+                return False
+
+            shopify_product = data.get('productSet', {}).get('product', {})
+            shopify_product_id = shopify_product.get('legacyResourceId')
+            shopify_variants = shopify_product.get('variants', {}).get('nodes', [])
+            if shopify_variants:
+                sv = shopify_variants[0]
+                variant.write({
+                    'shopify_variant_id': str(sv.get('legacyResourceId')),
+                    'shopify_inventory_item_id': str(sv.get('inventoryItem', {}).get('legacyResourceId', '')),
+                })
+                self._update_variant_price(config, shopify_product_id, variant, price)
+
+        product.write({
+            'shopify_product_id': str(shopify_product_id),
+            'shopify_last_sync': fields.Datetime.now(),
+            'shopify_sync_status': 'synced',
+            'shopify_sync_error': False,
+        })
+        _logger.info(f"Enkelvoudig product {product.name} gesynchroniseerd")
+
+        if config.sync_inventory:
+            self.sync_inventory_to_shopify(product.id, config)
+
+        return True
+
+    @api.model
+    def _update_variant_price(self, config, shopify_product_id, variant, price):
+        """Update de prijs van een variant via productVariantsBulkUpdate."""
+        mutation = """
+        mutation productVariantsBulkUpdate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+          productVariantsBulkUpdate(productId: $productId, variants: $variants) {
+            userErrors {
+              field
+              message
+            }
+          }
+        }
+        """
+        variables = {
+            'productId': f"gid://shopify/Product/{shopify_product_id}",
+            'variants': [{
+                'id': f"gid://shopify/ProductVariant/{variant.shopify_variant_id}",
+                'price': str(price),
+                'inventoryPolicy': 'CONTINUE' if config.allow_backorder else 'DENY',
+            }]
+        }
+        data = config._graphql(mutation, variables)
+        if data:
+            errors = data.get('productVariantsBulkUpdate', {}).get('userErrors', [])
+            if errors:
+                _logger.warning(f"Variant prijs update fout: {errors}")
+
+    @api.model
+    def _sync_product_with_variants(self, config, product, shopify_product_id, vendor, tags, body_html):
+        """Sync product met varianten via productSet."""
         mutation = """
         mutation productSet($synchronous: Boolean!, $input: ProductSetInput!) {
           productSet(synchronous: $synchronous, input: $input) {
@@ -297,20 +481,15 @@ class ShopifySync(models.AbstractModel):
         if shopify_product_id:
             product_set_input['id'] = f"gid://shopify/Product/{shopify_product_id}"
 
-        if heeft_attributen:
-            options = []
-            for line in product.attribute_line_ids[:3]:
-                option_values = [
-                    {'name': value.name}
-                    for value in line.product_template_value_ids
-                ]
-                options.append({
-                    'name': line.attribute_id.name,
-                    'values': option_values,
-                })
-            if options:
-                product_set_input['productOptions'] = options
+        # Opties
+        options = []
+        for line in product.attribute_line_ids[:3]:
+            option_values = [{'name': value.name} for value in line.product_template_value_ids]
+            options.append({'name': line.attribute_id.name, 'values': option_values})
+        if options:
+            product_set_input['productOptions'] = options
 
+        # Varianten
         variants = []
         for variant in product.product_variant_ids:
             price = self._get_price(variant, config)
@@ -321,22 +500,17 @@ class ShopifySync(models.AbstractModel):
 
             if variant.default_code:
                 variant_input['sku'] = variant.default_code
-
             if hasattr(variant, 'barcode') and variant.barcode:
                 variant_input['barcode'] = variant.barcode
-
             if variant.shopify_variant_id:
                 variant_input['id'] = f"gid://shopify/ProductVariant/{variant.shopify_variant_id}"
 
-            if heeft_attributen and variant.product_template_attribute_value_ids:
-                option_values = []
-                for attr_value in variant.product_template_attribute_value_ids:
-                    option_values.append({
-                        'name': attr_value.name,
-                        'optionName': attr_value.attribute_id.name,
-                    })
-                if option_values:
-                    variant_input['optionValues'] = option_values
+            if variant.product_template_attribute_value_ids:
+                option_values = [
+                    {'name': attr_value.name, 'optionName': attr_value.attribute_id.name}
+                    for attr_value in variant.product_template_attribute_value_ids
+                ]
+                variant_input['optionValues'] = option_values
 
             variants.append(variant_input)
 
@@ -346,18 +520,11 @@ class ShopifySync(models.AbstractModel):
         images = self._get_product_images(product)
         if images and not shopify_product_id:
             product_set_input['files'] = [
-                {
-                    'originalSource': f"data:image/jpeg;base64,{img}",
-                    'contentType': 'IMAGE',
-                }
+                {'originalSource': f"data:image/jpeg;base64,{img}", 'contentType': 'IMAGE'}
                 for img in images
             ]
 
-        data = config._graphql(mutation, {
-            'synchronous': True,
-            'input': product_set_input,
-        })
-
+        data = config._graphql(mutation, {'synchronous': True, 'input': product_set_input})
         if data:
             errors = data.get('productSet', {}).get('userErrors', [])
             if errors:
@@ -367,7 +534,6 @@ class ShopifySync(models.AbstractModel):
 
             shopify_product = data.get('productSet', {}).get('product', {})
             shopify_product_legacy_id = shopify_product.get('legacyResourceId')
-
             shopify_variants = shopify_product.get('variants', {}).get('nodes', [])
             self._match_shopify_variants_graphql(product, shopify_variants)
 
@@ -377,7 +543,7 @@ class ShopifySync(models.AbstractModel):
                 'shopify_sync_status': 'synced',
                 'shopify_sync_error': False,
             })
-            _logger.info(f"Product {product.name} gesynchroniseerd via productSet: {shopify_product_legacy_id}")
+            _logger.info(f"Product met varianten {product.name} gesynchroniseerd: {shopify_product_legacy_id}")
 
             if config.sync_inventory:
                 self.sync_inventory_to_shopify(product.id, config)
@@ -419,7 +585,6 @@ class ShopifySync(models.AbstractModel):
                 'shopify_sync_status': 'synced',
                 'shopify_last_sync': fields.Datetime.now(),
             })
-            _logger.info(f"Product {product.name} status gezet op {status}")
             return True
         return False
 
