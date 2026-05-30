@@ -12,7 +12,6 @@ _logger = logging.getLogger(__name__)
 class ShopifyWebhookController(http.Controller):
 
     def _verify_webhook(self, data, hmac_header):
-        """Verifieert de Shopify webhook HMAC signature."""
         try:
             client_secret = request.env['ir.config_parameter'].sudo().get_param('shopify.client_secret')
             if not client_secret:
@@ -29,15 +28,28 @@ class ShopifyWebhookController(http.Controller):
             return False
 
     def _get_config_for_shop(self, shop_domain):
-        """Haal de config op voor een shop domain."""
         shop_name = shop_domain.replace('.myshopify.com', '')
         return request.env['shopify.config'].sudo().search([
             ('shop_name', '=', shop_name),
             ('state', '=', 'connected'),
         ], limit=1)
 
+    def _safe_execute(self, func, *args, **kwargs):
+        """Voer een functie uit met savepoint voor race condition bescherming."""
+        savepoint = f"sp_{id(func)}"
+        try:
+            request.env.cr.execute(f"SAVEPOINT {savepoint}")
+            result = func(*args, **kwargs)
+            request.env.cr.execute(f"RELEASE SAVEPOINT {savepoint}")
+            return result
+        except Exception as e:
+            try:
+                request.env.cr.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+            except Exception:
+                pass
+            raise e
+
     def _cancel_order(self, order):
-        """Annuleer een order op basis van de huidige status."""
         try:
             if order.state == 'draft':
                 order.action_cancel()
@@ -49,7 +61,6 @@ class ShopifyWebhookController(http.Controller):
                     lambda i: i.state == 'posted' and i.move_type == 'out_invoice'
                 )
                 if invoices:
-                    # Controleer of er al een credit nota bestaat
                     existing_refunds = order.invoice_ids.filtered(
                         lambda i: i.move_type == 'out_refund'
                     )
@@ -89,18 +100,13 @@ class ShopifyWebhookController(http.Controller):
     @http.route('/shopify/webhooks/customers/redact',
                 type='http', auth='public', csrf=False, methods=['POST'])
     def customers_redact(self, **kwargs):
-        """GDPR: Verwijder klantgegevens op verzoek van Shopify."""
         try:
             data = request.httprequest.data
             hmac_header = request.httprequest.headers.get('X-Shopify-Hmac-Sha256', '')
-
             if not self._verify_webhook(data, hmac_header):
-                _logger.warning("Webhook HMAC verificatie mislukt voor customers/redact")
                 return request.make_response('Unauthorized', status=401)
-
             payload = json.loads(data)
             shopify_customer_id = str(payload.get('customer', {}).get('id', ''))
-
             if shopify_customer_id:
                 partner = request.env['res.partner'].sudo().search([
                     ('shopify_customer_id', '=', shopify_customer_id)
@@ -116,8 +122,6 @@ class ShopifyWebhookController(http.Controller):
                         'zip': False,
                         'shopify_customer_id': False,
                     })
-                    _logger.info(f"Klant {shopify_customer_id} geanonimiseerd via GDPR verzoek")
-
             return request.make_response('OK', status=200)
         except Exception as e:
             _logger.error(f"customers/redact fout: {e}")
@@ -126,19 +130,14 @@ class ShopifyWebhookController(http.Controller):
     @http.route('/shopify/webhooks/shop/redact',
                 type='http', auth='public', csrf=False, methods=['POST'])
     def shop_redact(self, **kwargs):
-        """GDPR: Verwijder winkelgegevens na deïnstallatie."""
         try:
             data = request.httprequest.data
             hmac_header = request.httprequest.headers.get('X-Shopify-Hmac-Sha256', '')
-
             if not self._verify_webhook(data, hmac_header):
-                _logger.warning("Webhook HMAC verificatie mislukt voor shop/redact")
                 return request.make_response('Unauthorized', status=401)
-
             payload = json.loads(data)
             shop_domain = payload.get('shop_domain', '')
             _logger.info(f"Shop redact verzoek ontvangen voor: {shop_domain}")
-
             return request.make_response('OK', status=200)
         except Exception as e:
             _logger.error(f"shop/redact fout: {e}")
@@ -147,19 +146,14 @@ class ShopifyWebhookController(http.Controller):
     @http.route('/shopify/webhooks/customers/data_request',
                 type='http', auth='public', csrf=False, methods=['POST'])
     def customers_data_request(self, **kwargs):
-        """GDPR: Klant vraagt zijn gegevens op."""
         try:
             data = request.httprequest.data
             hmac_header = request.httprequest.headers.get('X-Shopify-Hmac-Sha256', '')
-
             if not self._verify_webhook(data, hmac_header):
-                _logger.warning("Webhook HMAC verificatie mislukt voor customers/data_request")
                 return request.make_response('Unauthorized', status=401)
-
             payload = json.loads(data)
             shopify_customer_id = str(payload.get('customer', {}).get('id', ''))
             _logger.info(f"Data request ontvangen voor klant: {shopify_customer_id}")
-
             return request.make_response('OK', status=200)
         except Exception as e:
             _logger.error(f"customers/data_request fout: {e}")
@@ -168,23 +162,17 @@ class ShopifyWebhookController(http.Controller):
     @http.route('/shopify/webhooks/app/uninstalled',
                 type='http', auth='public', csrf=False, methods=['POST'])
     def app_uninstalled(self, **kwargs):
-        """Cleanup bij verwijdering van de app."""
         try:
             data = request.httprequest.data
             hmac_header = request.httprequest.headers.get('X-Shopify-Hmac-Sha256', '')
-
             if not self._verify_webhook(data, hmac_header):
-                _logger.warning("Webhook HMAC verificatie mislukt voor app/uninstalled")
                 return request.make_response('Unauthorized', status=401)
-
             payload = json.loads(data)
             shop_domain = payload.get('domain', '')
             shop_name = shop_domain.replace('.myshopify.com', '')
-
             config = request.env['shopify.config'].sudo().search([
                 ('shop_name', '=', shop_name)
             ], limit=1)
-
             if config:
                 config.sudo()._unregister_carrier_service()
                 config.sudo().write({
@@ -195,7 +183,6 @@ class ShopifyWebhookController(http.Controller):
                     'shopify_carrier_service_id': False,
                 })
                 _logger.info(f"App verwijderd voor winkel: {shop_name}")
-
             return request.make_response('OK', status=200)
         except Exception as e:
             _logger.error(f"app/uninstalled fout: {e}")
@@ -204,23 +191,19 @@ class ShopifyWebhookController(http.Controller):
     @http.route('/shopify/webhooks/orders/create',
                 type='http', auth='public', csrf=False, methods=['POST'])
     def orders_create(self, **kwargs):
-        """Real-time import van nieuwe Shopify bestelling."""
         try:
             data = request.httprequest.data
             hmac_header = request.httprequest.headers.get('X-Shopify-Hmac-Sha256', '')
-
             if not self._verify_webhook(data, hmac_header):
-                _logger.warning("Webhook HMAC verificatie mislukt voor orders/create")
                 return request.make_response('Unauthorized', status=401)
-
             order_data = json.loads(data)
             shop_domain = request.httprequest.headers.get('X-Shopify-Shop-Domain', '')
             config = self._get_config_for_shop(shop_domain)
-
             if config:
-                request.env['shopify.order.import'].sudo()._import_order(order_data, config)
-                _logger.info(f"Bestelling {order_data.get('order_number')} real-time geïmporteerd")
-
+                def do_import():
+                    request.env['shopify.order.import'].sudo()._import_order(order_data, config)
+                    _logger.info(f"Bestelling {order_data.get('order_number')} real-time geïmporteerd")
+                self._safe_execute(do_import)
             return request.make_response('OK', status=200)
         except Exception as e:
             _logger.error(f"orders/create webhook fout: {e}")
@@ -229,15 +212,11 @@ class ShopifyWebhookController(http.Controller):
     @http.route('/shopify/webhooks/orders/updated',
                 type='http', auth='public', csrf=False, methods=['POST'])
     def orders_updated(self, **kwargs):
-        """Update van bestaande Shopify bestelling."""
         try:
             data = request.httprequest.data
             hmac_header = request.httprequest.headers.get('X-Shopify-Hmac-Sha256', '')
-
             if not self._verify_webhook(data, hmac_header):
-                _logger.warning("Webhook HMAC verificatie mislukt voor orders/updated")
                 return request.make_response('Unauthorized', status=401)
-
             order_data = json.loads(data)
             shopify_order_id = str(order_data.get('id', ''))
             financial_status = order_data.get('financial_status', '')
@@ -245,27 +224,28 @@ class ShopifyWebhookController(http.Controller):
             shop_domain = request.httprequest.headers.get('X-Shopify-Shop-Domain', '')
             config = self._get_config_for_shop(shop_domain)
 
-            order = request.env['sale.order'].sudo().search([
-                ('shopify_order_id', '=', shopify_order_id)
-            ], limit=1)
+            def do_update():
+                order = request.env['sale.order'].sudo().search([
+                    ('shopify_order_id', '=', shopify_order_id)
+                ], limit=1)
+                if order:
+                    order.sudo().write({
+                        'shopify_financial_status': financial_status,
+                        'shopify_fulfillment_status': fulfillment_status,
+                    })
+                    if config and order.state == 'draft':
+                        importer = request.env['shopify.order.import'].sudo()
+                        if importer._should_confirm_order(config, financial_status):
+                            order.sudo().action_confirm()
+                            _logger.info(f"Order {order.name} alsnog bevestigd via orders/updated webhook")
+                            if config.invoice_policy == 'on_confirm':
+                                importer._create_invoice(order, config)
+                    _logger.info(f"Bestelling {order.name} bijgewerkt: {financial_status} / {fulfillment_status}")
+                else:
+                    if config:
+                        request.env['shopify.order.import'].sudo()._import_order(order_data, config)
 
-            if order:
-                order.sudo().write({
-                    'shopify_financial_status': financial_status,
-                    'shopify_fulfillment_status': fulfillment_status,
-                })
-                if config and order.state == 'draft':
-                    importer = request.env['shopify.order.import'].sudo()
-                    if importer._should_confirm_order(config, financial_status):
-                        order.sudo().action_confirm()
-                        _logger.info(f"Order {order.name} alsnog bevestigd via orders/updated webhook")
-                        if config.invoice_policy == 'on_confirm':
-                            importer._create_invoice(order, config)
-                _logger.info(f"Bestelling {order.name} bijgewerkt: {financial_status} / {fulfillment_status}")
-            else:
-                if config:
-                    request.env['shopify.order.import'].sudo()._import_order(order_data, config)
-
+            self._safe_execute(do_update)
             return request.make_response('OK', status=200)
         except Exception as e:
             _logger.error(f"orders/updated webhook fout: {e}")
@@ -274,30 +254,27 @@ class ShopifyWebhookController(http.Controller):
     @http.route('/shopify/webhooks/orders/cancelled',
                 type='http', auth='public', csrf=False, methods=['POST'])
     def orders_cancelled(self, **kwargs):
-        """Shopify bestelling geannuleerd."""
         try:
             data = request.httprequest.data
             hmac_header = request.httprequest.headers.get('X-Shopify-Hmac-Sha256', '')
-
             if not self._verify_webhook(data, hmac_header):
-                _logger.warning("Webhook HMAC verificatie mislukt voor orders/cancelled")
                 return request.make_response('Unauthorized', status=401)
-
             order_data = json.loads(data)
             shopify_order_id = str(order_data.get('id', ''))
 
-            order = request.env['sale.order'].sudo().search([
-                ('shopify_order_id', '=', shopify_order_id)
-            ], limit=1)
+            def do_cancel():
+                order = request.env['sale.order'].sudo().search([
+                    ('shopify_order_id', '=', shopify_order_id)
+                ], limit=1)
+                if order:
+                    order.sudo().write({
+                        'shopify_financial_status': 'cancelled',
+                        'shopify_fulfillment_status': 'cancelled',
+                    })
+                    self._cancel_order(order.sudo())
+                    _logger.info(f"Annulering verwerkt voor {order.name}")
 
-            if order:
-                order.sudo().write({
-                    'shopify_financial_status': 'cancelled',
-                    'shopify_fulfillment_status': 'cancelled',
-                })
-                self._cancel_order(order.sudo())
-                _logger.info(f"Annulering verwerkt voor {order.name}")
-
+            self._safe_execute(do_cancel)
             return request.make_response('OK', status=200)
         except Exception as e:
             _logger.error(f"orders/cancelled webhook fout: {e}")
@@ -306,40 +283,33 @@ class ShopifyWebhookController(http.Controller):
     @http.route('/shopify/webhooks/returns/create',
                 type='http', auth='public', csrf=False, methods=['POST'])
     def returns_create(self, **kwargs):
-        """Klant heeft een retour aangevraagd via Shopify."""
         try:
             data = request.httprequest.data
             hmac_header = request.httprequest.headers.get('X-Shopify-Hmac-Sha256', '')
-
             if not self._verify_webhook(data, hmac_header):
-                _logger.warning("Webhook HMAC verificatie mislukt voor returns/create")
                 return request.make_response('Unauthorized', status=401)
-
             payload = json.loads(data)
             shop_domain = request.httprequest.headers.get('X-Shopify-Shop-Domain', '')
             config = self._get_config_for_shop(shop_domain)
-
             if not config:
                 return request.make_response('OK', status=200)
 
             order_id = str(payload.get('order_id', ''))
             shopify_return_id = str(payload.get('id', ''))
 
-            order = request.env['sale.order'].sudo().search([
-                ('shopify_order_id', '=', order_id)
-            ], limit=1)
+            def do_return():
+                order = request.env['sale.order'].sudo().search([
+                    ('shopify_order_id', '=', order_id)
+                ], limit=1)
+                if not order:
+                    _logger.warning(f"Order niet gevonden voor retour: {order_id}")
+                    return
+                order.sudo().write({'shopify_return_id': shopify_return_id})
+                return_line_items = payload.get('return_line_items', [])
+                self._create_return_picking(order, return_line_items, config)
+                _logger.info(f"Retour aangevraagd voor order {order.name}: {shopify_return_id}")
 
-            if not order:
-                _logger.warning(f"Order niet gevonden voor retour: {order_id}")
-                return request.make_response('OK', status=200)
-
-            order.sudo().write({'shopify_return_id': shopify_return_id})
-
-            return_line_items = payload.get('return_line_items', [])
-            self._create_return_picking(order, return_line_items, config)
-
-            _logger.info(f"Retour aangevraagd voor order {order.name}: {shopify_return_id}")
-
+            self._safe_execute(do_return)
             return request.make_response('OK', status=200)
         except Exception as e:
             _logger.error(f"returns/create webhook fout: {e}")
@@ -348,26 +318,19 @@ class ShopifyWebhookController(http.Controller):
     @http.route('/shopify/webhooks/returns/update',
                 type='http', auth='public', csrf=False, methods=['POST'])
     def returns_update(self, **kwargs):
-        """Retour status bijgewerkt in Shopify."""
         try:
             data = request.httprequest.data
             hmac_header = request.httprequest.headers.get('X-Shopify-Hmac-Sha256', '')
-
             if not self._verify_webhook(data, hmac_header):
-                _logger.warning("Webhook HMAC verificatie mislukt voor returns/update")
                 return request.make_response('Unauthorized', status=401)
-
             payload = json.loads(data)
             order_id = str(payload.get('order_id', ''))
             status = payload.get('status', '')
-
             order = request.env['sale.order'].sudo().search([
                 ('shopify_order_id', '=', order_id)
             ], limit=1)
-
             if order:
                 _logger.info(f"Retour status bijgewerkt voor {order.name}: {status}")
-
             return request.make_response('OK', status=200)
         except Exception as e:
             _logger.error(f"returns/update webhook fout: {e}")
@@ -376,44 +339,38 @@ class ShopifyWebhookController(http.Controller):
     @http.route('/shopify/webhooks/refunds/create',
                 type='http', auth='public', csrf=False, methods=['POST'])
     def refunds_create(self, **kwargs):
-        """Terugbetaling aangemaakt in Shopify."""
         try:
             data = request.httprequest.data
             hmac_header = request.httprequest.headers.get('X-Shopify-Hmac-Sha256', '')
-
             if not self._verify_webhook(data, hmac_header):
-                _logger.warning("Webhook HMAC verificatie mislukt voor refunds/create")
                 return request.make_response('Unauthorized', status=401)
-
             payload = json.loads(data)
             shop_domain = request.httprequest.headers.get('X-Shopify-Shop-Domain', '')
             config = self._get_config_for_shop(shop_domain)
-
             if not config:
                 return request.make_response('OK', status=200)
 
             order_id = str(payload.get('order_id', ''))
-            order = request.env['sale.order'].sudo().search([
-                ('shopify_order_id', '=', order_id)
-            ], limit=1)
 
-            if not order:
-                _logger.warning(f"Order niet gevonden voor refund: {order_id}")
-                return request.make_response('OK', status=200)
+            def do_refund():
+                order = request.env['sale.order'].sudo().search([
+                    ('shopify_order_id', '=', order_id)
+                ], limit=1)
+                if not order:
+                    _logger.warning(f"Order niet gevonden voor refund: {order_id}")
+                    return
+                order.sudo().write({'shopify_financial_status': 'refunded'})
+                existing_refunds = order.invoice_ids.filtered(
+                    lambda i: i.move_type == 'out_refund'
+                )
+                if not existing_refunds and not order.shopify_return_id:
+                    importer = request.env['shopify.order.import'].sudo()
+                    importer._process_refund(order, config)
+                    _logger.info(f"Refund verwerkt voor order {order.name}")
+                else:
+                    _logger.info(f"Refund ontvangen voor {order.name} — credit nota al aanwezig of retour actief")
 
-            order.sudo().write({'shopify_financial_status': 'refunded'})
-
-            # Alleen credit nota aanmaken als er nog geen bestaat
-            existing_refunds = order.invoice_ids.filtered(
-                lambda i: i.move_type == 'out_refund'
-            )
-            if not existing_refunds and not order.shopify_return_id:
-                importer = request.env['shopify.order.import'].sudo()
-                importer._process_refund(order, config)
-                _logger.info(f"Refund verwerkt voor order {order.name}")
-            else:
-                _logger.info(f"Refund ontvangen voor {order.name} — credit nota al aanwezig of retour actief")
-
+            self._safe_execute(do_refund)
             return request.make_response('OK', status=200)
         except Exception as e:
             _logger.error(f"refunds/create webhook fout: {e}")
