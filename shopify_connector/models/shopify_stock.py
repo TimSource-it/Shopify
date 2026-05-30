@@ -30,7 +30,6 @@ class StockPicking(models.Model):
     def button_validate(self):
         result = super().button_validate()
 
-        # Voorraad pending zetten
         try:
             products = self.move_ids.mapped('product_id.product_tmpl_id')
             for product in products.filtered(
@@ -42,7 +41,6 @@ class StockPicking(models.Model):
         except Exception as e:
             _logger.error(f"Voorraad pending zetten na levering mislukt: {e}")
 
-        # Fulfillment aanmaken of retour verwerken
         try:
             if self.picking_type_code == 'outgoing':
                 self._create_shopify_fulfillment()
@@ -333,7 +331,6 @@ class StockPicking(models.Model):
                         'restockType': 'RETURN',
                         'locationId': f"gid://shopify/Location/{config.shopify_location_id}",
                     })
-                    # Bereken terug te betalen bedrag op basis van sale order regel
                     for order_line in sale_order.order_line:
                         if order_line.product_id.shopify_variant_id == variant_legacy_id:
                             refund_amount += order_line.price_unit * qty
@@ -384,6 +381,7 @@ class StockPicking(models.Model):
                     'amount': str(round(refund_amount, 2)),
                     'kind': 'REFUND',
                     'gateway': 'shopify_payments',
+                    'orderId': f"gid://shopify/Order/{shopify_order_id}",
                 }]
 
             result = config._graphql(mutation, {
