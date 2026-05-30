@@ -1,6 +1,6 @@
 from odoo import models, fields, api
-import requests
 import logging
+import uuid
 
 _logger = logging.getLogger(__name__)
 
@@ -54,7 +54,6 @@ class StockPicking(models.Model):
         return result
 
     def _get_shopify_config(self):
-        """Haal de actieve Shopify config op."""
         return self.env['shopify.config'].search([
             ('state', '=', 'connected'),
         ], limit=1)
@@ -74,14 +73,12 @@ class StockPicking(models.Model):
             tracking_number = self.carrier_tracking_ref or ''
             carrier = self.carrier_id
 
-            # Bouw tracking URL op
             tracking_url = ''
             if carrier and carrier.tracking_url and tracking_number:
                 tracking_url = carrier.tracking_url.replace(
                     '<shipmenttrackingnumber>', tracking_number
                 )
 
-            # Haal fulfillment orders op via GraphQL
             query = """
             query getFulfillmentOrders($orderId: ID!) {
               order(id: $orderId) {
@@ -119,7 +116,6 @@ class StockPicking(models.Model):
                 _logger.warning(f"Geen open fulfillment orders voor {sale_order.name}")
                 return
 
-            # Maak fulfillment aan via GraphQL mutation
             mutation = """
             mutation fulfillmentCreateV2($fulfillment: FulfillmentV2Input!) {
               fulfillmentCreateV2(fulfillment: $fulfillment) {
@@ -170,7 +166,6 @@ class StockPicking(models.Model):
 
     def _process_shopify_return(self):
         """Verwerk een retour in Shopify na validatie retourlevering."""
-        # Controleer of dit een retour is van een Shopify order
         origin_picking = self.env['stock.picking'].search([
             ('name', '=', self.origin),
         ], limit=1)
@@ -189,7 +184,6 @@ class StockPicking(models.Model):
             return
 
         try:
-            # Credit nota aanmaken op basis van config instelling
             if config.refund_policy == 'credit_note' and config._account_available():
                 self._create_return_credit_note(sale_order, config)
             elif config.refund_policy == 'cancel':
@@ -197,7 +191,6 @@ class StockPicking(models.Model):
                     sale_order.action_cancel()
                     _logger.info(f"Order {sale_order.name} geannuleerd wegens retour")
 
-            # Shopify bijwerken
             self._update_shopify_return_status(sale_order, config)
 
         except Exception as e:
@@ -206,7 +199,6 @@ class StockPicking(models.Model):
     def _create_return_credit_note(self, sale_order, config):
         """Maak een credit nota aan voor geretourneerde producten."""
         try:
-            # Bepaal welke producten en hoeveel zijn teruggekomen
             return_lines = {}
             for move in self.move_ids:
                 product = move.product_id
@@ -217,7 +209,6 @@ class StockPicking(models.Model):
             if not return_lines:
                 return
 
-            # Zoek de originele factuur
             invoices = sale_order.invoice_ids.filtered(
                 lambda i: i.state == 'posted' and i.move_type == 'out_invoice'
             )
@@ -231,10 +222,8 @@ class StockPicking(models.Model):
                 )
                 return
 
-            # Maak credit nota aan voor de meest recente factuur
             invoice = invoices.sorted('invoice_date', reverse=True)[0]
 
-            # Gebruik Odoo's ingebouwde credit nota functionaliteit
             credit_note_wizard = self.env['account.move.reversal'].create({
                 'move_ids': [(4, invoice.id)],
                 'reason': f"Retour voor {sale_order.name}",
@@ -242,12 +231,10 @@ class StockPicking(models.Model):
             })
             result = credit_note_wizard.reverse_moves()
 
-            # Haal de aangemaakte credit nota op
             credit_note_id = result.get('res_id')
             if credit_note_id:
                 credit_note = self.env['account.move'].browse(credit_note_id)
 
-                # Pas de hoeveelheden aan op basis van wat er teruggekomen is
                 for line in credit_note.invoice_line_ids:
                     product_id = line.product_id.id
                     if product_id in return_lines:
@@ -273,42 +260,159 @@ class StockPicking(models.Model):
             )
 
     def _update_shopify_return_status(self, sale_order, config):
-        """Update de Shopify order status na retour verwerking via GraphQL."""
+        """Maak een refund aan in Shopify na retour verwerking via GraphQL."""
         try:
             shopify_order_id = sale_order.shopify_order_id
 
-            # Haal de Shopify return ID op als die bekend is
-            shopify_return_id = getattr(sale_order, 'shopify_return_id', False)
-
-            if shopify_return_id:
-                # Sluit de return in Shopify
-                mutation = """
-                mutation returnClose($id: ID!) {
-                  returnClose(id: $id) {
-                    return {
+            # Stap 1: haal de Shopify order op om line item IDs en transacties te krijgen
+            query = """
+            query getOrder($orderId: ID!) {
+              order(id: $orderId) {
+                id
+                lineItems(first: 50) {
+                  edges {
+                    node {
                       id
-                      status
-                    }
-                    userErrors {
-                      field
-                      message
+                      quantity
+                      variant {
+                        id
+                        legacyResourceId
+                      }
                     }
                   }
                 }
-                """
-                result = config._graphql(mutation, {'id': shopify_return_id})
-                if result:
-                    errors = result.get('returnClose', {}).get('userErrors', [])
-                    if errors:
-                        _logger.warning(f"Shopify return sluiten mislukt: {errors}")
-                    else:
-                        _logger.info(f"Shopify return gesloten voor {sale_order.name}")
+                transactions(first: 10) {
+                  id
+                  kind
+                  status
+                  amountSet {
+                    shopMoney {
+                      amount
+                      currencyCode
+                    }
+                  }
+                }
+              }
+            }
+            """
+            data = config._graphql(query, {
+                'orderId': f"gid://shopify/Order/{shopify_order_id}"
+            })
 
-            # Update fulfillment status op de order
-            sale_order.write({'shopify_fulfillment_status': 'returned'})
+            if not data or not data.get('order'):
+                _logger.warning(f"Shopify order niet gevonden voor {sale_order.name}")
+                return
+
+            shopify_line_items = data['order'].get('lineItems', {}).get('edges', [])
+            transactions = data['order'].get('transactions', [])
+
+            # Stap 2: bepaal welke producten zijn teruggekomen
+            return_lines = {}
+            for move in self.move_ids:
+                if move.quantity > 0:
+                    variant_id = move.product_id.shopify_variant_id
+                    if variant_id:
+                        return_lines[str(variant_id)] = return_lines.get(str(variant_id), 0) + int(move.quantity)
+
+            if not return_lines:
+                _logger.warning(f"Geen retour producten gevonden voor {sale_order.name}")
+                return
+
+            # Stap 3: koppel aan Shopify line items
+            refund_line_items = []
+            refund_amount = 0.0
+            for edge in shopify_line_items:
+                node = edge['node']
+                variant = node.get('variant') or {}
+                variant_legacy_id = str(variant.get('legacyResourceId', ''))
+                if variant_legacy_id in return_lines:
+                    qty = return_lines[variant_legacy_id]
+                    refund_line_items.append({
+                        'lineItemId': node['id'],
+                        'quantity': qty,
+                        'restockType': 'RETURN',
+                        'locationId': f"gid://shopify/Location/{config.shopify_location_id}",
+                    })
+                    # Bereken terug te betalen bedrag op basis van sale order regel
+                    for order_line in sale_order.order_line:
+                        if order_line.product_id.shopify_variant_id == variant_legacy_id:
+                            refund_amount += order_line.price_unit * qty
+                            break
+
+            if not refund_line_items:
+                _logger.warning(f"Geen Shopify line items gevonden voor retour van {sale_order.name}")
+                return
+
+            # Stap 4: zoek de originele transactie voor terugbetaling
+            parent_transaction_id = None
+            for transaction in transactions:
+                if transaction.get('kind') in ('SALE', 'CAPTURE') and transaction.get('status') == 'SUCCESS':
+                    parent_transaction_id = transaction['id']
+                    break
+
+            # Stap 5: maak refund aan in Shopify
+            idempotency_key = str(uuid.uuid4())
+            mutation = """
+            mutation refundCreate($input: RefundInput!, $idempotencyKey: String!) {
+              refundCreate(input: $input) @idempotent(key: $idempotencyKey) {
+                refund {
+                  id
+                  totalRefundedSet {
+                    shopMoney {
+                      amount
+                      currencyCode
+                    }
+                  }
+                }
+                userErrors {
+                  field
+                  message
+                }
+              }
+            }
+            """
+
+            refund_input = {
+                'orderId': f"gid://shopify/Order/{shopify_order_id}",
+                'refundLineItems': refund_line_items,
+                'notify': True,
+            }
+
+            if parent_transaction_id and refund_amount > 0:
+                refund_input['transactions'] = [{
+                    'parentId': parent_transaction_id,
+                    'amount': str(round(refund_amount, 2)),
+                    'kind': 'REFUND',
+                    'gateway': 'shopify_payments',
+                }]
+
+            result = config._graphql(mutation, {
+                'input': refund_input,
+                'idempotencyKey': idempotency_key,
+            })
+
+            if result:
+                errors = result.get('refundCreate', {}).get('userErrors', [])
+                if errors:
+                    _logger.error(f"Shopify refund aanmaken mislukt voor {sale_order.name}: {errors}")
+                    sale_order.message_post(
+                        body=f"⚠️ Retour verwerkt in Odoo maar Shopify refund mislukt: {errors}. Verwerk handmatig in Shopify.",
+                        message_type='comment',
+                        subtype_xmlid='mail.mt_note',
+                    )
+                else:
+                    refund = result.get('refundCreate', {}).get('refund', {})
+                    refunded_amount = refund.get('totalRefundedSet', {}).get('shopMoney', {}).get('amount', 0)
+                    _logger.info(f"Shopify refund aangemaakt voor {sale_order.name}: €{refunded_amount}")
+                    sale_order.write({'shopify_fulfillment_status': 'returned'})
+                    sale_order.message_post(
+                        body=f"✅ Shopify refund aangemaakt: €{refunded_amount}",
+                        message_type='comment',
+                        subtype_xmlid='mail.mt_note',
+                    )
 
         except Exception as e:
-            _logger.error(f"Shopify return status update fout: {e}")
+            _logger.error(f"Shopify return status update fout voor {sale_order.name}: {e}")
 
 
 class SaleOrder(models.Model):
