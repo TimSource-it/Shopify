@@ -71,10 +71,12 @@ class ShopifyOrderImport(models.AbstractModel):
             }
             payment = self.env['account.payment'].create(payment_vals)
             payment.action_post()
-            lines = payment.line_ids.filtered(
+            move = payment.move_id
+            lines = move.line_ids.filtered(
                 lambda l: l.account_id == invoice.account_id
             )
-            invoice.js_assign_outstanding_line(lines.id)
+            if lines:
+                invoice.js_assign_outstanding_line(lines[0].id)
             _logger.info(f"Betaling geregistreerd voor {invoice.name}")
         except Exception as e:
             _logger.error(f"Betaling registreren mislukt: {e}")
