@@ -207,16 +207,31 @@ class ShopifyOrderImport(models.AbstractModel):
             price = float(shipping.get('price', 0))
             title = shipping.get('title', 'Verzendkosten')
 
-            carrier = self.env['delivery.carrier'].search([
-                ('name', 'ilike', title),
-                ('active', '=', True),
+            # Zoek carrier via mapping tabel
+            carrier_mapping = self.env['shopify.carrier.mapping'].search([
+                ('config_id', '=', config.id),
+                ('shopify_method_name', '=', title),
+                ('carrier_id', '!=', False),
             ], limit=1)
 
-            if carrier and not order.carrier_id and order.state == 'draft':
+            if carrier_mapping and not order.carrier_id and order.state == 'draft':
                 try:
-                    order.write({'carrier_id': carrier.id})
+                    order.write({'carrier_id': carrier_mapping.carrier_id.id})
+                    _logger.info(f"Carrier '{carrier_mapping.carrier_id.name}' gekoppeld aan order {order.name} via mapping")
                 except Exception as e:
                     _logger.warning(f"Carrier koppelen mislukt voor {order.name}: {e}")
+            elif not carrier_mapping:
+                # Fallback: zoek op naam
+                carrier = self.env['delivery.carrier'].search([
+                    ('name', 'ilike', title),
+                    ('active', '=', True),
+                ], limit=1)
+                if carrier and not order.carrier_id and order.state == 'draft':
+                    try:
+                        order.write({'carrier_id': carrier.id})
+                        _logger.info(f"Carrier '{carrier.name}' gekoppeld aan order {order.name} via naam")
+                    except Exception as e:
+                        _logger.warning(f"Carrier koppelen mislukt voor {order.name}: {e}")
 
             if price > 0:
                 self.env['sale.order.line'].create({
