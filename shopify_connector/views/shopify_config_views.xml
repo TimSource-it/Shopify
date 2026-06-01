@@ -19,6 +19,9 @@
                     <button name="action_fetch_locations"
                             string="Locaties ophalen"
                             type="object"/>
+                    <button name="action_import_shipping_methods"
+                            string="Importeer verzendmethodes"
+                            type="object"/>
                     <field name="state" widget="statusbar"
                            statusbar_visible="draft,connected"/>
                 </header>
@@ -65,6 +68,14 @@
                                     <field name="shopify_location_id" readonly="1"/>
                                     <field name="warehouse_id"/>
                                     <field name="sync_inventory"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Verzendmethodes" name="shipping">
+                            <field name="carrier_mapping_ids">
+                                <list editable="bottom">
+                                    <field name="shopify_method_name" readonly="1"/>
+                                    <field name="carrier_id"/>
                                 </list>
                             </field>
                         </page>
