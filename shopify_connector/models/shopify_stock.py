@@ -189,7 +189,11 @@ class StockPicking(models.Model):
                     sale_order.action_cancel()
                     _logger.info(f"Order {sale_order.name} geannuleerd wegens retour")
 
-            self._update_shopify_return_status(sale_order, config)
+            # Alleen Shopify refund aanmaken als die niet al door Shopify zelf gedaan is
+            if sale_order.shopify_financial_status not in ('refunded', 'partially_refunded'):
+                self._update_shopify_return_status(sale_order, config)
+            else:
+                _logger.info(f"Shopify refund al verwerkt voor {sale_order.name} — geen nieuwe refund aanmaken")
 
         except Exception as e:
             _logger.error(f"Retour verwerking fout voor {sale_order.name}: {e}")
@@ -218,6 +222,14 @@ class StockPicking(models.Model):
                     message_type='comment',
                     subtype_xmlid='mail.mt_note',
                 )
+                return
+
+            # Controleer of er al een credit nota bestaat
+            existing_refunds = sale_order.invoice_ids.filtered(
+                lambda i: i.move_type == 'out_refund'
+            )
+            if existing_refunds:
+                _logger.info(f"Credit nota al aanwezig voor {sale_order.name} — geen nieuwe aanmaken")
                 return
 
             invoice = invoices.sorted('invoice_date', reverse=True)[0]
