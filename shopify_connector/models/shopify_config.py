@@ -247,30 +247,61 @@ class ShopifyConfig(models.Model):
     def _fetch_location_id(self):
         self._fetch_locations()
 
+    def _get_or_create_shipping_product(self):
+        """Haal het standaard verzendproduct op of maak het aan."""
+        product = self.env['product.product'].search([
+            ('default_code', '=', 'SHOPIFY-SHIPPING')
+        ], limit=1)
+        if not product:
+            product = self.env['product.product'].create({
+                'name': 'Shopify Verzendkosten',
+                'default_code': 'SHOPIFY-SHIPPING',
+                'type': 'service',
+                'invoice_policy': 'order',
+            })
+        return product
+
     def action_import_shipping_methods(self):
-        """Importeer verzendmethodes uit Shopify en maak carrier mappings aan."""
+        """Importeer verzendmethodes uit Shopify, maak Odoo carriers aan en koppel ze."""
         self.ensure_one()
 
         query = """
         {
-          deliveryProfiles(first: 10) {
+          deliveryProfiles(first: 5) {
             edges {
               node {
-                id
                 name
                 profileLocationGroups {
-                  locationGroupZones(first: 50) {
+                  locationGroupZones(first: 10) {
                     edges {
                       node {
                         zone {
                           name
                         }
-                        methodDefinitions(first: 50) {
+                        methodDefinitions(first: 10) {
                           edges {
                             node {
-                              id
                               name
                               active
+                              rateProvider {
+                                __typename
+                                ... on DeliveryRateDefinition {
+                                  price {
+                                    amount
+                                    currencyCode
+                                  }
+                                }
+                                ... on DeliveryParticipant {
+                                  fixedFee {
+                                    amount
+                                    currencyCode
+                                  }
+                                  participantServices {
+                                    active
+                                    name
+                                  }
+                                }
+                              }
                             }
                           }
                         }
@@ -300,12 +331,15 @@ class ShopifyConfig(models.Model):
         imported = 0
         skipped = 0
         method_names_seen = set()
+        shipping_product = self._get_or_create_shipping_product()
 
         for profile_edge in data.get('deliveryProfiles', {}).get('edges', []):
             profile = profile_edge['node']
             for location_group in profile.get('profileLocationGroups', []):
                 for zone_edge in location_group.get('locationGroupZones', {}).get('edges', []):
                     zone_node = zone_edge['node']
+                    zone_name = zone_node.get('zone', {}).get('name', '')
+
                     for method_edge in zone_node.get('methodDefinitions', {}).get('edges', []):
                         method = method_edge['node']
                         method_name = method.get('name', '')
@@ -313,34 +347,58 @@ class ShopifyConfig(models.Model):
                         if not method_name or not method.get('active'):
                             continue
 
+                        # Voeg zone toe als naam al eerder gezien is
+                        unique_name = method_name
                         if method_name in method_names_seen:
-                            continue
+                            unique_name = f"{method_name} ({zone_name})"
                         method_names_seen.add(method_name)
 
-                        existing = self.env['shopify.carrier.mapping'].search([
+                        # Check of mapping al bestaat
+                        existing_mapping = self.env['shopify.carrier.mapping'].search([
                             ('config_id', '=', self.id),
-                            ('shopify_method_name', '=', method_name),
+                            ('shopify_method_name', '=', unique_name),
                         ], limit=1)
 
-                        if existing:
+                        if existing_mapping:
                             skipped += 1
                             continue
 
+                        # Bepaal prijs en type op basis van rateProvider
+                        rate_provider = method.get('rateProvider', {})
+                        provider_type = rate_provider.get('__typename', '')
+
+                        if provider_type == 'DeliveryRateDefinition':
+                            fixed_price = float(rate_provider.get('price', {}).get('amount', 0))
+                            delivery_type = 'fixed'
+                        else:
+                            # DeliveryParticipant — berekende prijs via externe carrier
+                            fixed_price = 0.0
+                            delivery_type = 'fixed'
+
+                        # Zoek bestaande Odoo carrier op naam
                         carrier = self.env['delivery.carrier'].search([
-                            ('name', 'ilike', method_name),
+                            ('name', '=', unique_name),
                             ('active', '=', True),
                         ], limit=1)
 
+                        if not carrier:
+                            # Maak nieuwe carrier aan in Odoo
+                            carrier = self.env['delivery.carrier'].create({
+                                'name': unique_name,
+                                'delivery_type': delivery_type,
+                                'fixed_price': fixed_price,
+                                'product_id': shipping_product.id,
+                            })
+                            _logger.info(f"Carrier aangemaakt: {unique_name} (€{fixed_price})")
+
+                        # Maak mapping aan
                         self.env['shopify.carrier.mapping'].create({
                             'config_id': self.id,
-                            'shopify_method_name': method_name,
-                            'carrier_id': carrier.id if carrier else False,
+                            'shopify_method_name': unique_name,
+                            'carrier_id': carrier.id,
                         })
                         imported += 1
-                        _logger.info(
-                            f"Verzendmethode geïmporteerd: {method_name}" +
-                            (f" → {carrier.name}" if carrier else " (geen carrier gevonden)")
-                        )
+                        _logger.info(f"Verzendmethode gekoppeld: {unique_name} → {carrier.name}")
 
         return {
             'type': 'ir.actions.client',
