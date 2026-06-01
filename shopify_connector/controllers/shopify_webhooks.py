@@ -351,6 +351,7 @@ class ShopifyWebhookController(http.Controller):
                 return request.make_response('OK', status=200)
 
             order_id = str(payload.get('order_id', ''))
+            refund_line_items = payload.get('refund_line_items', [])
 
             def do_refund():
                 order = request.env['sale.order'].sudo().search([
@@ -359,16 +360,37 @@ class ShopifyWebhookController(http.Controller):
                 if not order:
                     _logger.warning(f"Order niet gevonden voor refund: {order_id}")
                     return
+
                 order.sudo().write({'shopify_financial_status': 'refunded'})
+
+                # Controleer of er al een retourlevering bestaat via flow 2
+                existing_return_pickings = order.picking_ids.filtered(
+                    lambda p: p.picking_type_code == 'incoming' and p.state == 'done'
+                )
+
+                if existing_return_pickings:
+                    # Flow 2 — retour al verwerkt via Odoo, alleen credit nota checken
+                    _logger.info(f"Retour voor {order.name} al verwerkt via Odoo — geen nieuwe retourlevering aanmaken")
+                else:
+                    # Flow 1 — selfservice retour via Shopify portaal
+                    # Maak retourlevering aan en valideer direct
+                    if refund_line_items:
+                        return_picking = self._create_and_validate_return_picking(
+                            order, refund_line_items, config
+                        )
+                        if return_picking:
+                            _logger.info(f"Retourlevering aangemaakt en gevalideerd voor {order.name}: {return_picking.name}")
+
+                # Credit nota aanmaken als die er nog niet is
                 existing_refunds = order.invoice_ids.filtered(
                     lambda i: i.move_type == 'out_refund'
                 )
-                if not existing_refunds and not order.shopify_return_id:
+                if not existing_refunds:
                     importer = request.env['shopify.order.import'].sudo()
                     importer._process_refund(order, config)
                     _logger.info(f"Refund verwerkt voor order {order.name}")
                 else:
-                    _logger.info(f"Refund ontvangen voor {order.name} — credit nota al aanwezig of retour actief")
+                    _logger.info(f"Refund ontvangen voor {order.name} — credit nota al aanwezig")
 
             self._safe_execute(do_refund)
             return request.make_response('OK', status=200)
@@ -376,7 +398,7 @@ class ShopifyWebhookController(http.Controller):
             _logger.error(f"refunds/create webhook fout: {e}")
             return request.make_response('OK', status=200)
 
-    def _create_return_picking(self, order, return_line_items, config):
+    def _create_return_picking(self, order, return_line_items, config, auto_validate=False):
         """Maak een retourlevering aan in Odoo op basis van Shopify retourverzoek."""
         try:
             original_picking = order.picking_ids.filtered(
@@ -388,7 +410,7 @@ class ShopifyWebhookController(http.Controller):
                     message_type='comment',
                     subtype_xmlid='mail.mt_note',
                 )
-                return
+                return None
 
             original_picking = original_picking[0]
 
@@ -413,12 +435,22 @@ class ShopifyWebhookController(http.Controller):
 
             if return_picking_id:
                 return_picking = request.env['stock.picking'].sudo().browse(return_picking_id)
-                order.message_post(
-                    body=f"📦 Retour aangevraagd via Shopify — retourlevering aangemaakt: {return_picking.name}",
-                    message_type='comment',
-                    subtype_xmlid='mail.mt_note',
-                )
-                _logger.info(f"Retourlevering aangemaakt voor {order.name}: {return_picking.name}")
+
+                if auto_validate:
+                    # Stel hoeveelheden in en valideer direct
+                    for move in return_picking.move_ids:
+                        move.quantity = move.product_uom_qty
+                    return_picking.with_context(skip_immediate=True).button_validate()
+                    _logger.info(f"Retourlevering gevalideerd voor {order.name}: {return_picking.name}")
+                else:
+                    order.message_post(
+                        body=f"📦 Retour aangevraagd via Shopify — retourlevering aangemaakt: {return_picking.name}",
+                        message_type='comment',
+                        subtype_xmlid='mail.mt_note',
+                    )
+                    _logger.info(f"Retourlevering aangemaakt voor {order.name}: {return_picking.name}")
+
+                return return_picking
 
         except Exception as e:
             _logger.error(f"Retourlevering aanmaken mislukt voor {order.name}: {e}")
@@ -427,3 +459,21 @@ class ShopifyWebhookController(http.Controller):
                 message_type='comment',
                 subtype_xmlid='mail.mt_note',
             )
+            return None
+
+    def _create_and_validate_return_picking(self, order, refund_line_items, config):
+        """Maak retourlevering aan en valideer direct voor flow 1 (selfservice via Shopify)."""
+        # Converteer refund_line_items naar het formaat dat _create_return_picking verwacht
+        return_line_items = []
+        for item in refund_line_items:
+            line_item = item.get('line_item', {})
+            return_line_items.append({
+                'quantity': item.get('quantity', 0),
+                'line_item': {
+                    'variant_id': str(line_item.get('variant_id', '')),
+                }
+            })
+
+        return self._create_return_picking(
+            order, return_line_items, config, auto_validate=True
+        )
