@@ -313,12 +313,10 @@ class ShopifyConfig(models.Model):
                         if not method_name or not method.get('active'):
                             continue
 
-                        # Voorkom duplicaten binnen dezelfde import
                         if method_name in method_names_seen:
                             continue
                         method_names_seen.add(method_name)
 
-                        # Check of mapping al bestaat
                         existing = self.env['shopify.carrier.mapping'].search([
                             ('config_id', '=', self.id),
                             ('shopify_method_name', '=', method_name),
@@ -328,13 +326,11 @@ class ShopifyConfig(models.Model):
                             skipped += 1
                             continue
 
-                        # Zoek of er al een Odoo carrier bestaat met deze naam
                         carrier = self.env['delivery.carrier'].search([
                             ('name', 'ilike', method_name),
                             ('active', '=', True),
                         ], limit=1)
 
-                        # Maak mapping aan
                         self.env['shopify.carrier.mapping'].create({
                             'config_id': self.id,
                             'shopify_method_name': method_name,
@@ -479,4 +475,228 @@ class ShopifyConfig(models.Model):
                     error_text = str(error_msg)
 
                 _logger.warning(
-                    f"CarrierService niet beschikbaar voor
+                    f"CarrierService niet beschikbaar voor {self.shop_name}: {error_text}. "
+                    f"Stel verzendmethodes handmatig in via Shopify."
+                )
+                return False
+
+        except Exception as e:
+            _logger.error(f"CarrierService registratie fout: {e}")
+            return False
+
+    def _unregister_carrier_service(self):
+        """Verwijder onze CarrierService bij Shopify."""
+        try:
+            if not self.shopify_carrier_service_id:
+                return True
+
+            url = f"{self.shop_url}/admin/api/2026-04/carrier_services/{self.shopify_carrier_service_id}.json"
+            response = requests.delete(url, headers=self._get_headers(), timeout=10)
+
+            if response.status_code in (200, 204):
+                self.write({'shopify_carrier_service_id': False})
+                _logger.info(f"CarrierService verwijderd voor {self.shop_name}")
+                return True
+            else:
+                _logger.warning(f"CarrierService verwijderen mislukt: {response.text[:200]}")
+                return False
+
+        except Exception as e:
+            _logger.error(f"CarrierService verwijderen fout: {e}")
+            return False
+
+    def action_fetch_locations(self):
+        self.ensure_one()
+        self._fetch_locations()
+        return {
+            'type': 'ir.actions.act_window',
+            'res_model': 'shopify.config',
+            'res_id': self.id,
+            'view_mode': 'form',
+            'target': 'current',
+        }
+
+    def _get_valid_token(self):
+        if self.access_token_expires_at:
+            if datetime.utcnow() >= self.access_token_expires_at - timedelta(minutes=5):
+                _logger.info(f"Token verlopen voor {self.shop_name}, vernieuwen...")
+                self._refresh_access_token()
+        return self.access_token
+
+    def _get_headers(self):
+        token = self._get_valid_token()
+        return {
+            'X-Shopify-Access-Token': token,
+            'Content-Type': 'application/json',
+        }
+
+    def _get_base_url(self):
+        return self.env['ir.config_parameter'].sudo().get_param('web.base.url')
+
+    def _build_oauth_url(self, shop, state=None):
+        base_url = self._get_base_url()
+        redirect_uri = f"{base_url}/shopify/callback"
+        scopes = ','.join([
+            'read_products', 'write_products',
+            'read_orders', 'write_orders',
+            'read_inventory', 'write_inventory',
+            'read_customers', 'write_customers',
+            'read_fulfillments', 'write_fulfillments',
+            'read_merchant_managed_fulfillment_orders',
+            'write_merchant_managed_fulfillment_orders',
+            'read_assigned_fulfillment_orders',
+            'write_assigned_fulfillment_orders',
+            'read_third_party_fulfillment_orders',
+            'write_third_party_fulfillment_orders',
+            'read_shipping', 'write_shipping',
+            'read_returns', 'write_returns',
+            'read_price_rules', 'write_price_rules',
+            'read_discounts', 'write_discounts',
+            'read_locations',
+        ])
+        state_param = state or secrets.token_hex(32)
+        return (
+            f"https://{shop}/admin/oauth/authorize"
+            f"?client_id={self.client_id}"
+            f"&scope={scopes}"
+            f"&redirect_uri={redirect_uri}"
+            f"&state={state_param}"
+        )
+
+    def action_start_oauth(self):
+        self.ensure_one()
+        if not self.client_id:
+            raise UserError("Vul eerst de Client ID in.")
+        if not self.shop_name:
+            raise UserError("Vul eerst de winkelnaam in.")
+        shop = f"{self.shop_name}.myshopify.com"
+        state = self.env['shopify.oauth.state'].create_state(self.shop_name)
+        oauth_url = self._build_oauth_url(shop, state)
+        return {
+            'type': 'ir.actions.act_url',
+            'url': oauth_url,
+            'target': 'self',
+        }
+
+    def _exchange_code_for_token(self, code, shop):
+        self.ensure_one()
+        try:
+            url = f"https://{shop}/admin/oauth/access_token"
+            response = requests.post(
+                url,
+                data={
+                    'client_id': self.client_id,
+                    'client_secret': self.client_secret,
+                    'code': code,
+                    'expiring': '1',
+                },
+                timeout=10
+            )
+            _logger.info(f"Token exchange response: {response.status_code} - {response.text}")
+            if response.status_code == 200:
+                token_data = response.json()
+                vals = {
+                    'access_token': token_data.get('access_token'),
+                    'state': 'connected',
+                }
+                if token_data.get('refresh_token'):
+                    vals['refresh_token'] = token_data['refresh_token']
+                if token_data.get('expires_in'):
+                    vals['access_token_expires_at'] = datetime.utcnow() + timedelta(seconds=token_data['expires_in'])
+                self.write(vals)
+                self._fetch_locations()
+                self._register_webhooks()
+                self._register_carrier_service()
+                return True
+            else:
+                self.state = 'error'
+                _logger.error(f"Token exchange mislukt: {response.text}")
+                return False
+        except Exception as e:
+            _logger.error(f"Token exchange fout: {e}")
+            self.state = 'error'
+            return False
+
+    def _refresh_access_token(self):
+        self.ensure_one()
+        if not self.refresh_token:
+            _logger.error(f"Geen refresh token voor {self.shop_name}")
+            return False
+        try:
+            url = f"{self.shop_url}/admin/oauth/access_token"
+            response = requests.post(
+                url,
+                data={
+                    'client_id': self.client_id,
+                    'client_secret': self.client_secret,
+                    'grant_type': 'refresh_token',
+                    'refresh_token': self.refresh_token,
+                },
+                timeout=10
+            )
+            if response.status_code == 200:
+                token_data = response.json()
+                vals = {'access_token': token_data.get('access_token')}
+                if token_data.get('refresh_token'):
+                    vals['refresh_token'] = token_data['refresh_token']
+                if token_data.get('expires_in'):
+                    vals['access_token_expires_at'] = datetime.utcnow() + timedelta(seconds=token_data['expires_in'])
+                self.write(vals)
+                _logger.info(f"Token vernieuwd voor {self.shop_name}")
+                return True
+            else:
+                _logger.error(f"Token refresh mislukt: {response.text}")
+                self.state = 'error'
+                return False
+        except Exception as e:
+            _logger.error(f"Token refresh fout: {e}")
+            return False
+
+    def action_test_connection(self):
+        self.ensure_one()
+        if not self.access_token:
+            raise UserError("Geen access token. Klik eerst op Verbind met Shopify.")
+        try:
+            query = "{ shop { name } }"
+            data = self._graphql(query)
+            if data:
+                shop_name = data.get('shop', {}).get('name', self.shop_name)
+                self.state = 'connected'
+                if not self.location_ids:
+                    self._fetch_locations()
+                return {
+                    'type': 'ir.actions.client',
+                    'tag': 'display_notification',
+                    'params': {
+                        'title': 'Verbinding geslaagd!',
+                        'message': f"Verbonden met: {shop_name}",
+                        'type': 'success',
+                        'sticky': False,
+                    }
+                }
+            else:
+                self.state = 'error'
+                raise UserError("Verbinding mislukt.")
+        except requests.exceptions.ConnectionError:
+            self.state = 'error'
+            raise UserError("Kan geen verbinding maken.")
+        except requests.exceptions.Timeout:
+            self.state = 'error'
+            raise UserError("Verbinding time-out.")
+
+    def action_import_orders(self):
+        self.ensure_one()
+        imported = self.env['shopify.order.import'].import_orders_from_shopify(self)
+        if imported is not False:
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': 'Import geslaagd!',
+                    'message': f"{imported} bestellingen geïmporteerd.",
+                    'type': 'success',
+                    'sticky': False,
+                }
+            }
+        else:
+            raise UserError("Bestellingen importeren mislukt.")
