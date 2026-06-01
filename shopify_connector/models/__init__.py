@@ -9,3 +9,4 @@ from . import shopify_order_import
 from . import shopify_stock
 from . import shopify_location
 from . import shopify_carrier_service
+from . import shopify_carrier
