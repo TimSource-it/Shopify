@@ -3,3 +3,4 @@ access_shopify_config_user,shopify.config user,shopify_connector.model_shopify_c
 access_shopify_oauth_state,shopify.oauth.state user,shopify_connector.model_shopify_oauth_state,base.group_user,1,1,1,1
 access_shopify_sync_job,shopify.sync.job user,shopify_connector.model_shopify_sync_job,base.group_user,1,1,1,1
 access_shopify_location,shopify.location user,shopify_connector.model_shopify_location,base.group_user,1,1,1,1
+access_shopify_carrier_mapping,shopify.carrier.mapping user,shopify_connector.model_shopify_carrier_mapping,base.group_user,1,1,1,1
