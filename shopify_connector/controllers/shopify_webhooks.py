@@ -430,7 +430,7 @@ class ShopifyWebhookController(http.Controller):
                             return_line.quantity = shopify_line.get('quantity', 0)
                             break
 
-            result = return_wizard.create_returns()
+            result = return_wizard.action_create_returns()
             return_picking_id = result.get('res_id')
 
             if return_picking_id:
