@@ -37,9 +37,6 @@ class ShopifyOrderImport(models.AbstractModel):
             invoice = order._create_invoices()
             if not invoice:
                 return False
-            if config.account_id:
-                for line in invoice.invoice_line_ids:
-                    line.account_id = config.account_id
             invoice.action_post()
             if config.account_id:
                 self._register_payment(invoice, config)
@@ -221,7 +218,6 @@ class ShopifyOrderImport(models.AbstractModel):
                 except Exception as e:
                     _logger.warning(f"Carrier koppelen mislukt voor {order.name}: {e}")
             elif not carrier_mapping:
-                # Fallback: zoek op naam
                 carrier = self.env['delivery.carrier'].search([
                     ('name', 'ilike', title),
                     ('active', '=', True),
@@ -389,6 +385,13 @@ class ShopifyOrderImport(models.AbstractModel):
                 invoices = order.invoice_ids.filtered(
                     lambda i: i.state == 'posted' and i.move_type == 'out_invoice'
                 )
+                # Controleer of er al een credit nota bestaat
+                existing_refunds = order.invoice_ids.filtered(
+                    lambda i: i.move_type == 'out_refund'
+                )
+                if existing_refunds:
+                    _logger.info(f"Credit nota al aanwezig voor {order.name}")
+                    return
                 for invoice in invoices:
                     refund = invoice._reverse_moves()
                     refund.action_post()
