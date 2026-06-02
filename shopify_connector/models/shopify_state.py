@@ -4,22 +4,22 @@ import secrets
 
 class ShopifyOAuthState(models.TransientModel):
     _name = 'shopify.oauth.state'
-    _description = 'Tijdelijke OAuth State voor Shopify'
-    _transient_max_hours = 0.17  # 10 minuten
+    _description = 'Temporary OAuth State for Shopify'
+    _transient_max_hours = 0.17  # 10 minutes
 
     state = fields.Char(string='State Token', required=True, index=True)
-    shop_name = fields.Char(string='Shop Naam', required=True)
+    shop_name = fields.Char(string='Shop Name', required=True)
 
     @api.model
     def create_state(self, shop_name):
-        """Maak een nieuwe state aan en retourneer de token."""
+        """Create a new state and return the token."""
         state = secrets.token_hex(32)
         self.create({'state': state, 'shop_name': shop_name})
         return state
 
     @api.model
     def validate_and_consume(self, state):
-        """Valideer state, verwijder hem en retourneer shop_name."""
+        """Validate state, delete it and return shop_name."""
         record = self.search([('state', '=', state)], limit=1)
         if not record:
             return None
