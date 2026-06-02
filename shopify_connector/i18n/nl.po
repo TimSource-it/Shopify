@@ -1,0 +1,429 @@
+# Dutch translation for Shopify Connector
+# Copyright (C) 2024 Source IT
+# This file is distributed under the same license as the Shopify Connector module.
+msgid ""
+msgstr ""
+"Project-Id-Version: Odoo Shopify Connector 19.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2024-01-01 00:00+0000\n"
+"PO-Revision-Date: 2024-01-01 00:00+0000\n"
+"Last-Translator: Source IT <info@source-it.nu>\n"
+"Language-Team: Dutch\n"
+"Language: nl\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "Shopify Connection Settings"
+msgstr "Shopify Verbindingsinstellingen"
+
+msgid "Shop Name"
+msgstr "Winkelnaam"
+
+msgid "E.g. my-store (without .myshopify.com)"
+msgstr "Bijv: mijn-winkel (zonder .myshopify.com)"
+
+msgid "Shop URL"
+msgstr "Winkel URL"
+
+msgid "Token Expires At"
+msgstr "Token verloopt op"
+
+msgid "Active"
+msgstr "Actief"
+
+msgid "Not Connected"
+msgstr "Niet verbonden"
+
+msgid "Connected"
+msgstr "Verbonden"
+
+msgid "Error"
+msgstr "Fout"
+
+msgid "Shopify Pricelist"
+msgstr "Prijslijst voor Shopify"
+
+msgid "Which pricelist is used for prices sent to Shopify. Empty = default sales price."
+msgstr "Welke prijslijst wordt gebruikt voor de prijs naar Shopify. Leeg = standaard verkoopprijs."
+
+msgid "Default Shopify Location ID"
+msgstr "Standaard Shopify Locatie ID"
+
+msgid "Fallback location if no mapping is available."
+msgstr "Fallback locatie als geen mapping beschikbaar is."
+
+msgid "Locations"
+msgstr "Locaties"
+
+msgid "Shipping Method Mappings"
+msgstr "Verzendmethode Mappings"
+
+msgid "Web only"
+msgstr "Alleen webshop"
+
+msgid "All channels"
+msgstr "Alle kanalen"
+
+msgid "Sales Channel"
+msgstr "Verkoopkanaal"
+
+msgid "Sync Products"
+msgstr "Producten synchroniseren"
+
+msgid "Import Orders"
+msgstr "Bestellingen importeren"
+
+msgid "Sync Inventory"
+msgstr "Voorraad synchroniseren"
+
+msgid "Sync Customers"
+msgstr "Klanten synchroniseren"
+
+msgid "Allow Backorder"
+msgstr "Bestellen bij 0 voorraad"
+
+msgid "Paid only"
+msgstr "Alleen bij betaald"
+
+msgid "Paid or authorized"
+msgstr "Bij betaald of geautoriseerd"
+
+msgid "Always confirm"
+msgstr "Altijd bevestigen"
+
+msgid "Never auto-confirm"
+msgstr "Nooit automatisch bevestigen"
+
+msgid "Confirm Order On"
+msgstr "Order bevestigen bij"
+
+msgid "On confirmation"
+msgstr "Bij bevestiging"
+
+msgid "On delivery"
+msgstr "Bij levering"
+
+msgid "Never automatically"
+msgstr "Nooit automatisch"
+
+msgid "Create Invoice"
+msgstr "Factuur aanmaken"
+
+msgid "Create credit note"
+msgstr "Credit nota aanmaken"
+
+msgid "Cancel order"
+msgstr "Order annuleren"
+
+msgid "Process manually"
+msgstr "Handmatig verwerken"
+
+msgid "Return Policy"
+msgstr "Retour verwerking"
+
+msgid "Shopify Intermediary Account"
+msgstr "Shopify Tussenrekening"
+
+msgid "Ledger account for Shopify payments."
+msgstr "Grootboekrekening voor Shopify betalingen."
+
+msgid "Default Tax"
+msgstr "Standaard BTW"
+
+msgid "Default tax for Shopify orders."
+msgstr "Standaard BTW voor Shopify orders."
+
+msgid "Last Order Sync"
+msgstr "Laatste bestelling sync"
+
+msgid "Last Product Sync"
+msgstr "Laatste product sync"
+
+msgid "Last Inventory Sync"
+msgstr "Laatste voorraad sync"
+
+msgid "Shopify Shipping Method Mapping"
+msgstr "Shopify Verzendmethode Mapping"
+
+msgid "Shopify Configuration"
+msgstr "Shopify Configuratie"
+
+msgid "Shopify Shipping Method"
+msgstr "Shopify Verzendmethode"
+
+msgid "The name of the shipping method as configured in Shopify, e.g. \"DHL Express Worldwide\""
+msgstr "De naam van de verzendmethode zoals die in Shopify staat, bijv. \"DHL Express Worldwide\""
+
+msgid "Odoo Carrier"
+msgstr "Odoo Vervoerder"
+
+msgid "The carrier in Odoo linked to this shipping method"
+msgstr "De vervoerder in Odoo die gekoppeld wordt aan deze verzendmethode"
+
+msgid "This shipping method is already linked to this configuration."
+msgstr "Deze verzendmethode is al gekoppeld aan deze configuratie."
+
+msgid "Shopify Location Mapping"
+msgstr "Shopify Locatie Mapping"
+
+msgid "Shopify Shop"
+msgstr "Shopify Winkel"
+
+msgid "Shopify Location ID"
+msgstr "Shopify Locatie ID"
+
+msgid "Shopify Location Name"
+msgstr "Shopify Locatie Naam"
+
+msgid "Odoo Warehouse"
+msgstr "Odoo Magazijn"
+
+msgid "Link this Shopify location to an Odoo warehouse."
+msgstr "Koppel deze Shopify locatie aan een Odoo magazijn."
+
+msgid "If checked, inventory from this warehouse will be synced to this location."
+msgstr "Als aangevinkt wordt de voorraad van dit magazijn naar deze locatie gesynchroniseerd."
+
+msgid "Each warehouse may only be linked to one Shopify location."
+msgstr "Elk magazijn mag maar aan één Shopify locatie gekoppeld zijn."
+
+msgid "This Shopify location is already linked to this shop."
+msgstr "Deze Shopify locatie is al gekoppeld aan deze winkel."
+
+msgid "Shopify Order ID"
+msgstr "Shopify Order ID"
+
+msgid "Shopify Order Number"
+msgstr "Shopify Bestelnummer"
+
+msgid "Shopify Payment Status"
+msgstr "Shopify Betaalstatus"
+
+msgid "Shopify Fulfillment Status"
+msgstr "Shopify Verzendstatus"
+
+msgid "Shopify Customer ID"
+msgstr "Shopify Klant ID"
+
+msgid "A customer with this Shopify ID already exists."
+msgstr "Een klant met dit Shopify ID bestaat al."
+
+msgid "Last Shopify Sync"
+msgstr "Laatste Shopify sync"
+
+msgid "Not synced"
+msgstr "Niet gesynchroniseerd"
+
+msgid "Synced"
+msgstr "Gesynchroniseerd"
+
+msgid "Queued"
+msgstr "In wachtrij"
+
+msgid "Shopify Sync Status"
+msgstr "Shopify sync status"
+
+msgid "Shopify Sync Error"
+msgstr "Shopify sync fout"
+
+msgid "Publish on Shopify"
+msgstr "Publiceren op Shopify"
+
+msgid "If checked, this product will be synchronized to Shopify."
+msgstr "Als dit aangevinkt is wordt het product gesynchroniseerd naar Shopify."
+
+msgid "Shopify Tags"
+msgstr "Shopify Tags"
+
+msgid "Comma-separated tags for Shopify. E.g: new, sale, featured"
+msgstr "Komma gescheiden tags voor Shopify. Bijv: nieuw, sale, featured"
+
+msgid "Shopify Description"
+msgstr "Shopify Beschrijving"
+
+msgid "Specific description for Shopify. Empty = website description or sales description."
+msgstr "Specifieke beschrijving voor Shopify. Leeg = website beschrijving of verkoopbeschrijving."
+
+msgid "Shopify Inventory"
+msgstr "Shopify Voorraad"
+
+msgid "Shopify Variant ID"
+msgstr "Shopify Variant ID"
+
+msgid "Shopify Inventory Item ID"
+msgstr "Shopify Inventory Item ID"
+
+msgid "Shopify Sync Job"
+msgstr "Shopify Synchronisatie Taak"
+
+msgid "Export product"
+msgstr "Product exporteren"
+
+msgid "Import order"
+msgstr "Bestelling importeren"
+
+msgid "Update inventory"
+msgstr "Voorraad bijwerken"
+
+msgid "Import customer"
+msgstr "Klant importeren"
+
+msgid "Job Type"
+msgstr "Taak type"
+
+msgid "Running"
+msgstr "Bezig"
+
+msgid "Done"
+msgstr "Voltooid"
+
+msgid "Error Message"
+msgstr "Foutmelding"
+
+msgid "Retries"
+msgstr "Pogingen"
+
+msgid "Max Retries"
+msgstr "Max pogingen"
+
+msgid "Temporary OAuth State for Shopify"
+msgstr "Tijdelijke OAuth State voor Shopify"
+
+msgid "State Token"
+msgstr "State Token"
+
+msgid "Defaults loaded!"
+msgstr "Standaard instellingen ingesteld!"
+
+msgid "Accounting defaults have been set automatically."
+msgstr "Boekhouding defaults zijn automatisch ingesteld."
+
+msgid "No changes"
+msgstr "Geen wijzigingen"
+
+msgid "Settings were already filled in or could not be created."
+msgstr "Instellingen waren al ingevuld of konden niet worden aangemaakt."
+
+msgid "Failed to fetch shipping methods."
+msgstr "Verzendmethodes ophalen mislukt."
+
+msgid "Shipping methods imported"
+msgstr "Verzendmethodes geïmporteerd"
+
+msgid "Connection successful!"
+msgstr "Verbinding geslaagd!"
+
+msgid "Connection failed."
+msgstr "Verbinding mislukt."
+
+msgid "Could not establish connection."
+msgstr "Kan geen verbinding maken."
+
+msgid "Connection timed out."
+msgstr "Verbinding time-out."
+
+msgid "Import successful!"
+msgstr "Import geslaagd!"
+
+msgid "Failed to import orders."
+msgstr "Bestellingen importeren mislukt."
+
+msgid "Please fill in the Client ID first."
+msgstr "Vul eerst de Client ID in."
+
+msgid "Please fill in the shop name first."
+msgstr "Vul eerst de winkelnaam in."
+
+msgid "No access token. Please connect to Shopify first."
+msgstr "Geen access token. Klik eerst op Verbind met Shopify."
+
+msgid "Enable 'Publish on Shopify' to synchronize this product."
+msgstr "Zet 'Publiceren op Shopify' aan om dit product te synchroniseren."
+
+msgid "Synced!"
+msgstr "Gesynchroniseerd!"
+
+msgid "Sync failed. Please check the sync status for details."
+msgstr "Synchronisatie mislukt. Controleer de sync status voor details."
+
+msgid "Bulk sync completed"
+msgstr "Bulk sync voltooid"
+
+msgid "No location mapping configured."
+msgstr "Geen locatie mapping geconfigureerd."
+
+msgid "Shopify Location"
+msgstr "Shopify Locatie"
+
+msgid "Available Stock"
+msgstr "Verkoopbare voorraad"
+
+msgid "Connect to Shopify"
+msgstr "Verbind met Shopify"
+
+msgid "Test Connection"
+msgstr "Test verbinding"
+
+msgid "Fetch Locations"
+msgstr "Locaties ophalen"
+
+msgid "Import Shipping Methods"
+msgstr "Importeer verzendmethodes"
+
+msgid "Shop Settings"
+msgstr "Winkelinstellingen"
+
+msgid "OAuth Credentials"
+msgstr "OAuth Inloggegevens"
+
+msgid "Synchronization"
+msgstr "Synchronisatie"
+
+msgid "Order Processing"
+msgstr "Order verwerking"
+
+msgid "Accounting"
+msgstr "Boekhouding"
+
+msgid "Load Default Settings"
+msgstr "Standaard instellingen laden"
+
+msgid "Shipping Methods"
+msgstr "Verzendmethodes"
+
+msgid "Last Synchronizations"
+msgstr "Laatste synchronisaties"
+
+msgid "Shopify Orders"
+msgstr "Shopify Bestellingen"
+
+msgid "Shopify Customers"
+msgstr "Shopify Klanten"
+
+msgid "Shopify Shops"
+msgstr "Shopify Winkels"
+
+msgid "Settings"
+msgstr "Instellingen"
+
+msgid "Orders"
+msgstr "Bestellingen"
+
+msgid "Customers"
+msgstr "Klanten"
+
+msgid "Shopify Settings"
+msgstr "Shopify Instellingen"
+
+msgid "Shopify Inventory per Location"
+msgstr "Shopify Voorraad per locatie"
+
+msgid "Sync to Shopify"
+msgstr "Sync naar Shopify"
+
+msgid "Shopify: Automatic Sync"
+msgstr "Shopify: automatische synchronisatie"
+
+msgid "Shopify: Import Orders"
+msgstr "Shopify: bestellingen importeren"
