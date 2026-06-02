@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
     <record id="ir_cron_shopify_sync" model="ir.cron">
-        <field name="name">Shopify: automatische synchronisatie</field>
+        <field name="name">Shopify: Automatic Sync</field>
         <field name="model_id" ref="shopify_connector.model_shopify_sync"/>
         <field name="state">code</field>
         <field name="code">model.cron_sync_pending_products()</field>
@@ -11,7 +11,7 @@
     </record>
 
     <record id="ir_cron_shopify_orders" model="ir.cron">
-        <field name="name">Shopify: bestellingen importeren</field>
+        <field name="name">Shopify: Import Orders</field>
         <field name="model_id" ref="shopify_connector.model_shopify_order_import"/>
         <field name="state">code</field>
         <field name="code">model.cron_import_orders()</field>
