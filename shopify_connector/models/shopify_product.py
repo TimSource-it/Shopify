@@ -10,36 +10,36 @@ class ProductTemplate(models.Model):
         copy=False,
     )
     shopify_last_sync = fields.Datetime(
-        string='Laatste Shopify sync',
+        string='Last Shopify Sync',
         copy=False,
     )
     shopify_sync_status = fields.Selection([
-        ('not_synced', 'Niet gesynchroniseerd'),
-        ('synced', 'Gesynchroniseerd'),
-        ('error', 'Fout'),
-        ('pending', 'In wachtrij'),
-    ], string='Shopify sync status', default='not_synced', copy=False)
+        ('not_synced', 'Not synced'),
+        ('synced', 'Synced'),
+        ('error', 'Error'),
+        ('pending', 'Queued'),
+    ], string='Shopify Sync Status', default='not_synced', copy=False)
     shopify_sync_error = fields.Char(
-        string='Shopify sync fout',
+        string='Shopify Sync Error',
         copy=False,
     )
     shopify_published = fields.Boolean(
-        string='Publiceren op Shopify',
+        string='Publish on Shopify',
         default=False,
-        help='Als dit aangevinkt is wordt het product gesynchroniseerd naar Shopify.',
+        help='If checked, this product will be synchronized to Shopify.',
     )
     shopify_tags = fields.Char(
         string='Shopify Tags',
-        help='Komma gescheiden tags voor Shopify. Bijv: nieuw, sale, featured',
+        help='Comma-separated tags for Shopify. E.g: new, sale, featured',
         copy=False,
     )
     shopify_description = fields.Html(
-        string='Shopify Beschrijving',
-        help='Specifieke beschrijving voor Shopify. Leeg = website beschrijving of verkoopbeschrijving.',
+        string='Shopify Description',
+        help='Specific description for Shopify. Empty = website description or sales description.',
         copy=False,
     )
     shopify_inventory_html = fields.Html(
-        string='Shopify Voorraad',
+        string='Shopify Inventory',
         compute='_compute_shopify_inventory_html',
         sanitize=False,
     )
@@ -62,7 +62,7 @@ class ProductTemplate(models.Model):
         return result
 
     def _get_shopify_inventory_lines(self):
-        """Haal voorraad per Shopify locatie mapping op."""
+        """Get inventory per Shopify location mapping."""
         result = []
         config = self.env['shopify.config'].search([
             ('state', '=', 'connected')
@@ -97,14 +97,14 @@ class ProductTemplate(models.Model):
         for product in self:
             lines = product._get_shopify_inventory_lines()
             if not lines:
-                product.shopify_inventory_html = '<p>Geen locatie mapping geconfigureerd.</p>'
+                product.shopify_inventory_html = '<p>No location mapping configured.</p>'
                 continue
 
             html = '<table style="width:100%; border-collapse:collapse;">'
             html += '<tr style="background:#f5f5f5; font-weight:bold;">'
-            html += '<td style="padding:8px; border:1px solid #ddd;">Shopify Locatie</td>'
-            html += '<td style="padding:8px; border:1px solid #ddd;">Odoo Magazijn</td>'
-            html += '<td style="padding:8px; border:1px solid #ddd;">Verkoopbare voorraad</td>'
+            html += '<td style="padding:8px; border:1px solid #ddd;">Shopify Location</td>'
+            html += '<td style="padding:8px; border:1px solid #ddd;">Odoo Warehouse</td>'
+            html += '<td style="padding:8px; border:1px solid #ddd;">Available Stock</td>'
             html += '</tr>'
             for line in lines:
                 html += '<tr>'
@@ -116,7 +116,7 @@ class ProductTemplate(models.Model):
             product.shopify_inventory_html = html
 
     def action_sync_to_shopify(self):
-        """Synchroniseer dit product naar Shopify."""
+        """Sync this product to Shopify."""
         self.ensure_one()
 
         if not self.shopify_published and not self.shopify_product_id:
@@ -124,8 +124,8 @@ class ProductTemplate(models.Model):
                 'type': 'ir.actions.client',
                 'tag': 'display_notification',
                 'params': {
-                    'title': 'Niet gesynchroniseerd',
-                    'message': "Zet 'Publiceren op Shopify' aan om dit product te synchroniseren.",
+                    'title': 'Not synced',
+                    'message': "Enable 'Publish on Shopify' to synchronize this product.",
                     'type': 'warning',
                     'sticky': False,
                 }
@@ -137,17 +137,17 @@ class ProductTemplate(models.Model):
                 'type': 'ir.actions.client',
                 'tag': 'display_notification',
                 'params': {
-                    'title': 'Gesynchroniseerd!',
-                    'message': f"{self.name} is succesvol gesynchroniseerd naar Shopify.",
+                    'title': 'Synced!',
+                    'message': f"{self.name} has been successfully synchronized to Shopify.",
                     'type': 'success',
                     'sticky': False,
                 }
             }
         else:
-            raise UserError("Synchronisatie mislukt. Controleer de sync status voor details.")
+            raise UserError("Sync failed. Please check the sync status for details.")
 
     def action_bulk_sync_to_shopify(self):
-        """Synchroniseer meerdere producten naar Shopify."""
+        """Sync multiple products to Shopify."""
         success = 0
         failed = 0
         skipped = 0
@@ -165,8 +165,8 @@ class ProductTemplate(models.Model):
             'type': 'ir.actions.client',
             'tag': 'display_notification',
             'params': {
-                'title': 'Bulk sync voltooid',
-                'message': f"{success} gesynchroniseerd, {failed} mislukt, {skipped} overgeslagen.",
+                'title': 'Bulk sync completed',
+                'message': f"{success} synced, {failed} failed, {skipped} skipped.",
                 'type': 'success' if failed == 0 else 'warning',
                 'sticky': True,
             }
