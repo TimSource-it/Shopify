@@ -5,7 +5,7 @@ class ResPartner(models.Model):
     _inherit = 'res.partner'
 
     shopify_customer_id = fields.Char(
-        string='Shopify Klant ID',
+        string='Shopify Customer ID',
         copy=False,
         index=True,
     )
@@ -13,5 +13,5 @@ class ResPartner(models.Model):
     _sql_constraints = [
         ('shopify_customer_id_unique',
          'UNIQUE(shopify_customer_id)',
-         'Een klant met dit Shopify ID bestaat al.')
+         'A customer with this Shopify ID already exists.')
     ]
