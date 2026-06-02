@@ -7,35 +7,35 @@
             <form>
                 <header>
                     <button name="action_start_oauth"
-                            string="Verbind met Shopify"
+                            string="Connect to Shopify"
                             type="object"
                             class="btn-primary"/>
                     <button name="action_test_connection"
-                            string="Test verbinding"
+                            string="Test Connection"
                             type="object"/>
                     <button name="action_import_orders"
-                            string="Importeer bestellingen"
+                            string="Import Orders"
                             type="object"/>
                     <button name="action_fetch_locations"
-                            string="Locaties ophalen"
+                            string="Fetch Locations"
                             type="object"/>
                     <button name="action_import_shipping_methods"
-                            string="Importeer verzendmethodes"
+                            string="Import Shipping Methods"
                             type="object"/>
                     <field name="state" widget="statusbar"
                            statusbar_visible="draft,connected"/>
                 </header>
                 <sheet>
-                    <group string="Winkelinstellingen">
+                    <group string="Shop Settings">
                         <field name="shop_name"/>
                         <field name="shop_url"/>
                     </group>
-                    <group string="OAuth Inloggegevens">
+                    <group string="OAuth Credentials">
                         <field name="client_id"/>
                         <field name="client_secret" password="True"/>
                         <field name="access_token" password="True"/>
                     </group>
-                    <group string="Synchronisatie">
+                    <group string="Synchronization">
                         <group>
                             <field name="sync_products"/>
                             <field name="sync_orders"/>
@@ -45,23 +45,23 @@
                             <field name="pricelist_id"/>
                             <field name="published_scope"/>
                         </group>
-                        <group string="Order verwerking">
+                        <group string="Order Processing">
                             <field name="confirm_order_on"/>
                             <field name="invoice_policy"/>
                             <field name="refund_policy"/>
                         </group>
                     </group>
-                    <group string="Boekhouding">
+                    <group string="Accounting">
                         <field name="account_id"/>
                         <field name="tax_id"/>
                         <button name="action_set_accounting_defaults"
-                                string="Standaard instellingen laden"
+                                string="Load Default Settings"
                                 type="object"
                                 class="btn-secondary"
                                 invisible="account_id and tax_id"/>
                     </group>
                     <notebook>
-                        <page string="Locaties" name="locations">
+                        <page string="Locations" name="locations">
                             <field name="location_ids">
                                 <list editable="bottom">
                                     <field name="shopify_location_name" readonly="1"/>
@@ -71,7 +71,7 @@
                                 </list>
                             </field>
                         </page>
-                        <page string="Verzendmethodes" name="shipping">
+                        <page string="Shipping Methods" name="shipping">
                             <field name="carrier_mapping_ids">
                                 <list editable="bottom">
                                     <field name="shopify_method_name" readonly="1"/>
@@ -79,7 +79,7 @@
                                 </list>
                             </field>
                         </page>
-                        <page string="Laatste synchronisaties" name="sync_info">
+                        <page string="Last Synchronizations" name="sync_info">
                             <group>
                                 <field name="last_order_sync" readonly="1"/>
                                 <field name="last_product_sync" readonly="1"/>
@@ -108,30 +108,30 @@
     </record>
 
     <record id="action_shopify_orders" model="ir.actions.act_window">
-        <field name="name">Shopify Bestellingen</field>
+        <field name="name">Shopify Orders</field>
         <field name="res_model">sale.order</field>
         <field name="view_mode">list,form</field>
         <field name="domain">[('shopify_order_id', '!=', False)]</field>
     </record>
 
     <record id="action_shopify_customers" model="ir.actions.act_window">
-        <field name="name">Shopify Klanten</field>
+        <field name="name">Shopify Customers</field>
         <field name="res_model">res.partner</field>
         <field name="view_mode">list,form</field>
         <field name="domain">[('shopify_customer_id', '!=', False)]</field>
     </record>
 
     <record id="action_shopify_config" model="ir.actions.act_window">
-        <field name="name">Shopify Winkels</field>
+        <field name="name">Shopify Shops</field>
         <field name="res_model">shopify.config</field>
         <field name="view_mode">list,form</field>
     </record>
 
     <menuitem id="menu_shopify_root" name="Shopify" sequence="50"/>
-    <menuitem id="menu_shopify_config" name="Instellingen" parent="menu_shopify_root"
+    <menuitem id="menu_shopify_config" name="Settings" parent="menu_shopify_root"
               action="action_shopify_config" sequence="10"/>
-    <menuitem id="menu_shopify_orders" name="Bestellingen" parent="menu_shopify_root"
+    <menuitem id="menu_shopify_orders" name="Orders" parent="menu_shopify_root"
               action="action_shopify_orders" sequence="20"/>
-    <menuitem id="menu_shopify_customers" name="Klanten" parent="menu_shopify_root"
+    <menuitem id="menu_shopify_customers" name="Customers" parent="menu_shopify_root"
               action="action_shopify_customers" sequence="30"/>
 </odoo>
