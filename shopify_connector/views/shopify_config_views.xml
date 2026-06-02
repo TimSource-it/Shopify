@@ -22,6 +22,9 @@
                     <button name="action_import_shipping_methods"
                             string="Import Shipping Methods"
                             type="object"/>
+                    <button name="action_import_products_from_shopify"
+                            string="Import Products from Shopify"
+                            type="object"/>
                     <field name="state" widget="statusbar"
                            statusbar_visible="draft,connected"/>
                 </header>
