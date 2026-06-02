@@ -10,14 +10,14 @@ class SaleOrder(models.Model):
         index=True,
     )
     shopify_order_number = fields.Char(
-        string='Shopify Bestelnummer',
+        string='Shopify Order Number',
         copy=False,
     )
     shopify_financial_status = fields.Char(
-        string='Shopify Betaalstatus',
+        string='Shopify Payment Status',
         copy=False,
     )
     shopify_fulfillment_status = fields.Char(
-        string='Shopify Verzendstatus',
+        string='Shopify Fulfillment Status',
         copy=False,
     )
