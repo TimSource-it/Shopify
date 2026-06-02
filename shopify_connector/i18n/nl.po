@@ -1,9 +1,12 @@
-# Dutch translation for Shopify Connector
-# Copyright (C) 2024 Source IT
-# This file is distributed under the same license as the Shopify Connector module.
+# Translation of Odoo Server.
+# This file contains the translation of the following modules:
+# * shopify_connector
+#
+# Translators:
+# Source IT <info@source-it.nu>, 2024
 msgid ""
 msgstr ""
-"Project-Id-Version: Odoo Shopify Connector 19.0\n"
+"Project-Id-Version: Odoo Server 19.0\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2024-01-01 00:00+0000\n"
 "PO-Revision-Date: 2024-01-01 00:00+0000\n"
@@ -12,418 +15,557 @@ msgstr ""
 "Language: nl\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
-"Content-Transfer-Encoding: 8bit\n"
+"Content-Transfer-Encoding: \n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
 
+#. module: shopify_connector
 msgid "Shopify Connection Settings"
 msgstr "Shopify Verbindingsinstellingen"
 
+#. module: shopify_connector
 msgid "Shop Name"
 msgstr "Winkelnaam"
 
+#. module: shopify_connector
 msgid "E.g. my-store (without .myshopify.com)"
 msgstr "Bijv: mijn-winkel (zonder .myshopify.com)"
 
+#. module: shopify_connector
 msgid "Shop URL"
 msgstr "Winkel URL"
 
+#. module: shopify_connector
 msgid "Token Expires At"
 msgstr "Token verloopt op"
 
+#. module: shopify_connector
 msgid "Active"
 msgstr "Actief"
 
+#. module: shopify_connector
 msgid "Not Connected"
 msgstr "Niet verbonden"
 
+#. module: shopify_connector
 msgid "Connected"
 msgstr "Verbonden"
 
+#. module: shopify_connector
 msgid "Error"
 msgstr "Fout"
 
+#. module: shopify_connector
 msgid "Shopify Pricelist"
 msgstr "Prijslijst voor Shopify"
 
+#. module: shopify_connector
 msgid "Which pricelist is used for prices sent to Shopify. Empty = default sales price."
 msgstr "Welke prijslijst wordt gebruikt voor de prijs naar Shopify. Leeg = standaard verkoopprijs."
 
+#. module: shopify_connector
 msgid "Default Shopify Location ID"
 msgstr "Standaard Shopify Locatie ID"
 
+#. module: shopify_connector
 msgid "Fallback location if no mapping is available."
 msgstr "Fallback locatie als geen mapping beschikbaar is."
 
+#. module: shopify_connector
 msgid "Locations"
 msgstr "Locaties"
 
+#. module: shopify_connector
 msgid "Shipping Method Mappings"
 msgstr "Verzendmethode Mappings"
 
+#. module: shopify_connector
 msgid "Web only"
 msgstr "Alleen webshop"
 
+#. module: shopify_connector
 msgid "All channels"
 msgstr "Alle kanalen"
 
+#. module: shopify_connector
 msgid "Sales Channel"
 msgstr "Verkoopkanaal"
 
+#. module: shopify_connector
 msgid "Sync Products"
 msgstr "Producten synchroniseren"
 
+#. module: shopify_connector
 msgid "Import Orders"
 msgstr "Bestellingen importeren"
 
+#. module: shopify_connector
 msgid "Sync Inventory"
 msgstr "Voorraad synchroniseren"
 
+#. module: shopify_connector
 msgid "Sync Customers"
 msgstr "Klanten synchroniseren"
 
+#. module: shopify_connector
 msgid "Allow Backorder"
 msgstr "Bestellen bij 0 voorraad"
 
+#. module: shopify_connector
 msgid "Paid only"
 msgstr "Alleen bij betaald"
 
+#. module: shopify_connector
 msgid "Paid or authorized"
 msgstr "Bij betaald of geautoriseerd"
 
+#. module: shopify_connector
 msgid "Always confirm"
 msgstr "Altijd bevestigen"
 
+#. module: shopify_connector
 msgid "Never auto-confirm"
 msgstr "Nooit automatisch bevestigen"
 
+#. module: shopify_connector
 msgid "Confirm Order On"
 msgstr "Order bevestigen bij"
 
+#. module: shopify_connector
 msgid "On confirmation"
 msgstr "Bij bevestiging"
 
+#. module: shopify_connector
 msgid "On delivery"
 msgstr "Bij levering"
 
+#. module: shopify_connector
 msgid "Never automatically"
 msgstr "Nooit automatisch"
 
+#. module: shopify_connector
 msgid "Create Invoice"
 msgstr "Factuur aanmaken"
 
+#. module: shopify_connector
 msgid "Create credit note"
 msgstr "Credit nota aanmaken"
 
+#. module: shopify_connector
 msgid "Cancel order"
 msgstr "Order annuleren"
 
+#. module: shopify_connector
 msgid "Process manually"
 msgstr "Handmatig verwerken"
 
+#. module: shopify_connector
 msgid "Return Policy"
 msgstr "Retour verwerking"
 
+#. module: shopify_connector
 msgid "Shopify Intermediary Account"
 msgstr "Shopify Tussenrekening"
 
+#. module: shopify_connector
 msgid "Ledger account for Shopify payments."
 msgstr "Grootboekrekening voor Shopify betalingen."
 
+#. module: shopify_connector
 msgid "Default Tax"
 msgstr "Standaard BTW"
 
+#. module: shopify_connector
 msgid "Default tax for Shopify orders."
 msgstr "Standaard BTW voor Shopify orders."
 
+#. module: shopify_connector
 msgid "Last Order Sync"
 msgstr "Laatste bestelling sync"
 
+#. module: shopify_connector
 msgid "Last Product Sync"
 msgstr "Laatste product sync"
 
+#. module: shopify_connector
 msgid "Last Inventory Sync"
 msgstr "Laatste voorraad sync"
 
+#. module: shopify_connector
 msgid "Shopify Shipping Method Mapping"
 msgstr "Shopify Verzendmethode Mapping"
 
+#. module: shopify_connector
 msgid "Shopify Configuration"
 msgstr "Shopify Configuratie"
 
+#. module: shopify_connector
 msgid "Shopify Shipping Method"
 msgstr "Shopify Verzendmethode"
 
+#. module: shopify_connector
 msgid "The name of the shipping method as configured in Shopify, e.g. \"DHL Express Worldwide\""
 msgstr "De naam van de verzendmethode zoals die in Shopify staat, bijv. \"DHL Express Worldwide\""
 
+#. module: shopify_connector
 msgid "Odoo Carrier"
 msgstr "Odoo Vervoerder"
 
+#. module: shopify_connector
 msgid "The carrier in Odoo linked to this shipping method"
 msgstr "De vervoerder in Odoo die gekoppeld wordt aan deze verzendmethode"
 
+#. module: shopify_connector
 msgid "This shipping method is already linked to this configuration."
 msgstr "Deze verzendmethode is al gekoppeld aan deze configuratie."
 
+#. module: shopify_connector
 msgid "Shopify Location Mapping"
 msgstr "Shopify Locatie Mapping"
 
+#. module: shopify_connector
 msgid "Shopify Shop"
 msgstr "Shopify Winkel"
 
+#. module: shopify_connector
 msgid "Shopify Location ID"
 msgstr "Shopify Locatie ID"
 
+#. module: shopify_connector
 msgid "Shopify Location Name"
 msgstr "Shopify Locatie Naam"
 
+#. module: shopify_connector
 msgid "Odoo Warehouse"
 msgstr "Odoo Magazijn"
 
+#. module: shopify_connector
 msgid "Link this Shopify location to an Odoo warehouse."
 msgstr "Koppel deze Shopify locatie aan een Odoo magazijn."
 
+#. module: shopify_connector
 msgid "If checked, inventory from this warehouse will be synced to this location."
 msgstr "Als aangevinkt wordt de voorraad van dit magazijn naar deze locatie gesynchroniseerd."
 
+#. module: shopify_connector
 msgid "Each warehouse may only be linked to one Shopify location."
 msgstr "Elk magazijn mag maar aan één Shopify locatie gekoppeld zijn."
 
+#. module: shopify_connector
 msgid "This Shopify location is already linked to this shop."
 msgstr "Deze Shopify locatie is al gekoppeld aan deze winkel."
 
+#. module: shopify_connector
 msgid "Shopify Order ID"
 msgstr "Shopify Order ID"
 
+#. module: shopify_connector
 msgid "Shopify Order Number"
 msgstr "Shopify Bestelnummer"
 
+#. module: shopify_connector
 msgid "Shopify Payment Status"
 msgstr "Shopify Betaalstatus"
 
+#. module: shopify_connector
 msgid "Shopify Fulfillment Status"
 msgstr "Shopify Verzendstatus"
 
+#. module: shopify_connector
 msgid "Shopify Customer ID"
 msgstr "Shopify Klant ID"
 
+#. module: shopify_connector
 msgid "A customer with this Shopify ID already exists."
 msgstr "Een klant met dit Shopify ID bestaat al."
 
+#. module: shopify_connector
 msgid "Last Shopify Sync"
 msgstr "Laatste Shopify sync"
 
+#. module: shopify_connector
 msgid "Not synced"
 msgstr "Niet gesynchroniseerd"
 
+#. module: shopify_connector
 msgid "Synced"
 msgstr "Gesynchroniseerd"
 
+#. module: shopify_connector
 msgid "Queued"
 msgstr "In wachtrij"
 
+#. module: shopify_connector
 msgid "Shopify Sync Status"
 msgstr "Shopify sync status"
 
+#. module: shopify_connector
 msgid "Shopify Sync Error"
 msgstr "Shopify sync fout"
 
+#. module: shopify_connector
 msgid "Publish on Shopify"
 msgstr "Publiceren op Shopify"
 
+#. module: shopify_connector
 msgid "If checked, this product will be synchronized to Shopify."
 msgstr "Als dit aangevinkt is wordt het product gesynchroniseerd naar Shopify."
 
+#. module: shopify_connector
 msgid "Shopify Tags"
 msgstr "Shopify Tags"
 
+#. module: shopify_connector
 msgid "Comma-separated tags for Shopify. E.g: new, sale, featured"
 msgstr "Komma gescheiden tags voor Shopify. Bijv: nieuw, sale, featured"
 
+#. module: shopify_connector
 msgid "Shopify Description"
 msgstr "Shopify Beschrijving"
 
+#. module: shopify_connector
 msgid "Specific description for Shopify. Empty = website description or sales description."
 msgstr "Specifieke beschrijving voor Shopify. Leeg = website beschrijving of verkoopbeschrijving."
 
+#. module: shopify_connector
 msgid "Shopify Inventory"
 msgstr "Shopify Voorraad"
 
+#. module: shopify_connector
 msgid "Shopify Variant ID"
 msgstr "Shopify Variant ID"
 
+#. module: shopify_connector
 msgid "Shopify Inventory Item ID"
 msgstr "Shopify Inventory Item ID"
 
+#. module: shopify_connector
 msgid "Shopify Sync Job"
 msgstr "Shopify Synchronisatie Taak"
 
+#. module: shopify_connector
 msgid "Export product"
 msgstr "Product exporteren"
 
+#. module: shopify_connector
 msgid "Import order"
 msgstr "Bestelling importeren"
 
+#. module: shopify_connector
 msgid "Update inventory"
 msgstr "Voorraad bijwerken"
 
+#. module: shopify_connector
 msgid "Import customer"
 msgstr "Klant importeren"
 
+#. module: shopify_connector
 msgid "Job Type"
 msgstr "Taak type"
 
+#. module: shopify_connector
 msgid "Running"
 msgstr "Bezig"
 
+#. module: shopify_connector
 msgid "Done"
 msgstr "Voltooid"
 
+#. module: shopify_connector
 msgid "Error Message"
 msgstr "Foutmelding"
 
+#. module: shopify_connector
 msgid "Retries"
 msgstr "Pogingen"
 
+#. module: shopify_connector
 msgid "Max Retries"
 msgstr "Max pogingen"
 
+#. module: shopify_connector
 msgid "Temporary OAuth State for Shopify"
 msgstr "Tijdelijke OAuth State voor Shopify"
 
+#. module: shopify_connector
 msgid "State Token"
 msgstr "State Token"
 
+#. module: shopify_connector
 msgid "Defaults loaded!"
 msgstr "Standaard instellingen ingesteld!"
 
+#. module: shopify_connector
 msgid "Accounting defaults have been set automatically."
 msgstr "Boekhouding defaults zijn automatisch ingesteld."
 
+#. module: shopify_connector
 msgid "No changes"
 msgstr "Geen wijzigingen"
 
+#. module: shopify_connector
 msgid "Settings were already filled in or could not be created."
 msgstr "Instellingen waren al ingevuld of konden niet worden aangemaakt."
 
+#. module: shopify_connector
 msgid "Failed to fetch shipping methods."
 msgstr "Verzendmethodes ophalen mislukt."
 
+#. module: shopify_connector
 msgid "Shipping methods imported"
 msgstr "Verzendmethodes geïmporteerd"
 
+#. module: shopify_connector
 msgid "Connection successful!"
 msgstr "Verbinding geslaagd!"
 
+#. module: shopify_connector
 msgid "Connection failed."
 msgstr "Verbinding mislukt."
 
+#. module: shopify_connector
 msgid "Could not establish connection."
 msgstr "Kan geen verbinding maken."
 
+#. module: shopify_connector
 msgid "Connection timed out."
 msgstr "Verbinding time-out."
 
+#. module: shopify_connector
 msgid "Import successful!"
 msgstr "Import geslaagd!"
 
+#. module: shopify_connector
 msgid "Failed to import orders."
 msgstr "Bestellingen importeren mislukt."
 
+#. module: shopify_connector
 msgid "Please fill in the Client ID first."
 msgstr "Vul eerst de Client ID in."
 
+#. module: shopify_connector
 msgid "Please fill in the shop name first."
 msgstr "Vul eerst de winkelnaam in."
 
+#. module: shopify_connector
 msgid "No access token. Please connect to Shopify first."
 msgstr "Geen access token. Klik eerst op Verbind met Shopify."
 
+#. module: shopify_connector
 msgid "Enable 'Publish on Shopify' to synchronize this product."
 msgstr "Zet 'Publiceren op Shopify' aan om dit product te synchroniseren."
 
+#. module: shopify_connector
 msgid "Synced!"
 msgstr "Gesynchroniseerd!"
 
+#. module: shopify_connector
 msgid "Sync failed. Please check the sync status for details."
 msgstr "Synchronisatie mislukt. Controleer de sync status voor details."
 
+#. module: shopify_connector
 msgid "Bulk sync completed"
 msgstr "Bulk sync voltooid"
 
+#. module: shopify_connector
 msgid "No location mapping configured."
 msgstr "Geen locatie mapping geconfigureerd."
 
+#. module: shopify_connector
 msgid "Shopify Location"
 msgstr "Shopify Locatie"
 
+#. module: shopify_connector
 msgid "Available Stock"
 msgstr "Verkoopbare voorraad"
 
+#. module: shopify_connector
 msgid "Connect to Shopify"
 msgstr "Verbind met Shopify"
 
+#. module: shopify_connector
 msgid "Test Connection"
 msgstr "Test verbinding"
 
+#. module: shopify_connector
 msgid "Fetch Locations"
 msgstr "Locaties ophalen"
 
+#. module: shopify_connector
 msgid "Import Shipping Methods"
 msgstr "Importeer verzendmethodes"
 
+#. module: shopify_connector
 msgid "Shop Settings"
 msgstr "Winkelinstellingen"
 
+#. module: shopify_connector
 msgid "OAuth Credentials"
 msgstr "OAuth Inloggegevens"
 
+#. module: shopify_connector
 msgid "Synchronization"
 msgstr "Synchronisatie"
 
+#. module: shopify_connector
 msgid "Order Processing"
 msgstr "Order verwerking"
 
+#. module: shopify_connector
 msgid "Accounting"
 msgstr "Boekhouding"
 
+#. module: shopify_connector
 msgid "Load Default Settings"
 msgstr "Standaard instellingen laden"
 
+#. module: shopify_connector
 msgid "Shipping Methods"
 msgstr "Verzendmethodes"
 
+#. module: shopify_connector
 msgid "Last Synchronizations"
 msgstr "Laatste synchronisaties"
 
+#. module: shopify_connector
 msgid "Shopify Orders"
 msgstr "Shopify Bestellingen"
 
+#. module: shopify_connector
 msgid "Shopify Customers"
 msgstr "Shopify Klanten"
 
+#. module: shopify_connector
 msgid "Shopify Shops"
 msgstr "Shopify Winkels"
 
+#. module: shopify_connector
 msgid "Settings"
 msgstr "Instellingen"
 
+#. module: shopify_connector
 msgid "Orders"
 msgstr "Bestellingen"
 
+#. module: shopify_connector
 msgid "Customers"
 msgstr "Klanten"
 
+#. module: shopify_connector
 msgid "Shopify Settings"
 msgstr "Shopify Instellingen"
 
+#. module: shopify_connector
 msgid "Shopify Inventory per Location"
 msgstr "Shopify Voorraad per locatie"
 
+#. module: shopify_connector
 msgid "Sync to Shopify"
 msgstr "Sync naar Shopify"
 
+#. module: shopify_connector
 msgid "Shopify: Automatic Sync"
 msgstr "Shopify: automatische synchronisatie"
 
+#. module: shopify_connector
 msgid "Shopify: Import Orders"
 msgstr "Shopify: bestellingen importeren"
