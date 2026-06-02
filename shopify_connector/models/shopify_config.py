@@ -10,16 +10,16 @@ _logger = logging.getLogger(__name__)
 
 class ShopifyConfig(models.Model):
     _name = 'shopify.config'
-    _description = 'Shopify Verbindingsinstellingen'
+    _description = 'Shopify Connection Settings'
     _rec_name = 'shop_name'
 
     shop_name = fields.Char(
-        string='Winkelnaam',
+        string='Shop Name',
         required=True,
-        help='Bijv: mijn-winkel (zonder .myshopify.com)'
+        help='E.g. my-store (without .myshopify.com)'
     )
     shop_url = fields.Char(
-        string='Winkel URL',
+        string='Shop URL',
         compute='_compute_shop_url',
         store=True,
     )
@@ -27,22 +27,22 @@ class ShopifyConfig(models.Model):
     client_id = fields.Char(string='Client ID')
     client_secret = fields.Char(string='Client Secret')
     refresh_token = fields.Char(string='Refresh Token')
-    access_token_expires_at = fields.Datetime(string='Token verloopt op')
-    active = fields.Boolean(string='Actief', default=True)
+    access_token_expires_at = fields.Datetime(string='Token Expires At')
+    active = fields.Boolean(string='Active', default=True)
     state = fields.Selection([
-        ('draft', 'Niet verbonden'),
-        ('connected', 'Verbonden'),
-        ('error', 'Fout'),
+        ('draft', 'Not Connected'),
+        ('connected', 'Connected'),
+        ('error', 'Error'),
     ], string='Status', default='draft')
 
     pricelist_id = fields.Many2one(
         'product.pricelist',
-        string='Prijslijst voor Shopify',
-        help='Welke prijslijst wordt gebruikt voor de prijs naar Shopify. Leeg = standaard verkoopprijs.',
+        string='Shopify Pricelist',
+        help='Which pricelist is used for prices sent to Shopify. Empty = default sales price.',
     )
     shopify_location_id = fields.Char(
-        string='Standaard Shopify Locatie ID',
-        help='Fallback locatie als geen mapping beschikbaar is.',
+        string='Default Shopify Location ID',
+        help='Fallback location if no mapping is available.',
     )
     shopify_carrier_service_id = fields.Char(
         string='Shopify CarrierService ID',
@@ -51,57 +51,57 @@ class ShopifyConfig(models.Model):
     location_ids = fields.One2many(
         'shopify.location',
         'config_id',
-        string='Locaties',
+        string='Locations',
     )
     carrier_mapping_ids = fields.One2many(
         'shopify.carrier.mapping',
         'config_id',
-        string='Verzendmethode Mappings',
+        string='Shipping Method Mappings',
     )
     published_scope = fields.Selection([
-        ('web', 'Alleen webshop'),
-        ('global', 'Alle kanalen'),
-    ], string='Verkoopkanaal', default='global')
+        ('web', 'Web only'),
+        ('global', 'All channels'),
+    ], string='Sales Channel', default='global')
 
-    sync_products = fields.Boolean(string='Producten synchroniseren', default=True)
-    sync_orders = fields.Boolean(string='Bestellingen importeren', default=True)
-    sync_inventory = fields.Boolean(string='Voorraad synchroniseren', default=True)
-    sync_customers = fields.Boolean(string='Klanten synchroniseren', default=True)
-    allow_backorder = fields.Boolean(string='Bestellen bij 0 voorraad', default=False)
+    sync_products = fields.Boolean(string='Sync Products', default=True)
+    sync_orders = fields.Boolean(string='Import Orders', default=True)
+    sync_inventory = fields.Boolean(string='Sync Inventory', default=True)
+    sync_customers = fields.Boolean(string='Sync Customers', default=True)
+    allow_backorder = fields.Boolean(string='Allow Backorder', default=False)
 
     confirm_order_on = fields.Selection([
-        ('paid', 'Alleen bij betaald'),
-        ('authorized', 'Bij betaald of geautoriseerd'),
-        ('always', 'Altijd bevestigen'),
-        ('never', 'Nooit automatisch bevestigen'),
-    ], string='Order bevestigen bij', default='paid')
+        ('paid', 'Paid only'),
+        ('authorized', 'Paid or authorized'),
+        ('always', 'Always confirm'),
+        ('never', 'Never auto-confirm'),
+    ], string='Confirm Order On', default='paid')
 
     invoice_policy = fields.Selection([
-        ('on_confirm', 'Bij bevestiging'),
-        ('on_delivery', 'Bij levering'),
-        ('never', 'Nooit automatisch'),
-    ], string='Factuur aanmaken', default='on_confirm')
+        ('on_confirm', 'On confirmation'),
+        ('on_delivery', 'On delivery'),
+        ('never', 'Never automatically'),
+    ], string='Create Invoice', default='on_confirm')
 
     refund_policy = fields.Selection([
-        ('credit_note', 'Credit nota aanmaken'),
-        ('cancel', 'Order annuleren'),
-        ('manual', 'Handmatig verwerken'),
-    ], string='Retour verwerking', default='credit_note')
+        ('credit_note', 'Create credit note'),
+        ('cancel', 'Cancel order'),
+        ('manual', 'Process manually'),
+    ], string='Return Policy', default='credit_note')
 
     account_id = fields.Many2one(
         'account.account',
-        string='Shopify Tussenrekening',
-        help='Grootboekrekening voor Shopify betalingen.',
+        string='Shopify Intermediary Account',
+        help='Ledger account for Shopify payments.',
     )
     tax_id = fields.Many2one(
         'account.tax',
-        string='Standaard BTW',
-        help='Standaard BTW voor Shopify orders.',
+        string='Default Tax',
+        help='Default tax for Shopify orders.',
     )
 
-    last_order_sync = fields.Datetime(string='Laatste bestelling sync')
-    last_product_sync = fields.Datetime(string='Laatste product sync')
-    last_inventory_sync = fields.Datetime(string='Laatste voorraad sync')
+    last_order_sync = fields.Datetime(string='Last Order Sync')
+    last_product_sync = fields.Datetime(string='Last Product Sync')
+    last_inventory_sync = fields.Datetime(string='Last Inventory Sync')
 
     def _account_available(self):
         return 'account.account' in self.env
@@ -115,7 +115,7 @@ class ShopifyConfig(models.Model):
                 rec.shop_url = False
 
     def _graphql(self, query, variables=None):
-        """Voer een GraphQL query of mutation uit."""
+        """Execute a GraphQL query or mutation."""
         self.ensure_one()
         url = f"{self.shop_url}/admin/api/2026-04/graphql.json"
         payload = {'query': query}
@@ -131,14 +131,14 @@ class ShopifyConfig(models.Model):
             if response.status_code == 200:
                 data = response.json()
                 if 'errors' in data:
-                    _logger.error(f"GraphQL fouten: {data['errors']}")
+                    _logger.error(f"GraphQL errors: {data['errors']}")
                     return None
                 return data.get('data')
             else:
-                _logger.error(f"GraphQL request mislukt ({response.status_code}): {response.text[:200]}")
+                _logger.error(f"GraphQL request failed ({response.status_code}): {response.text[:200]}")
                 return None
         except Exception as e:
-            _logger.error(f"GraphQL request fout: {e}")
+            _logger.error(f"GraphQL request error: {e}")
             return None
 
     def action_set_accounting_defaults(self):
@@ -147,17 +147,17 @@ class ShopifyConfig(models.Model):
 
         if not self.account_id and self._account_available():
             existing = self.env['account.account'].search([
-                ('name', '=', 'Shopify Betalingen'),
+                ('name', '=', 'Shopify Payments'),
             ], limit=1)
             if not existing:
                 try:
                     existing = self.env['account.account'].create({
-                        'name': 'Shopify Betalingen',
+                        'name': 'Shopify Payments',
                         'code': '13000',
                         'account_type': 'asset_current',
                     })
                 except Exception as e:
-                    _logger.error(f"Tussenrekening aanmaken mislukt: {e}")
+                    _logger.error(f"Failed to create intermediary account: {e}")
             if existing:
                 vals['account_id'] = existing.id
 
@@ -175,8 +175,8 @@ class ShopifyConfig(models.Model):
                 'type': 'ir.actions.client',
                 'tag': 'display_notification',
                 'params': {
-                    'title': 'Standaard instellingen ingesteld!',
-                    'message': 'Boekhouding defaults zijn automatisch ingesteld.',
+                    'title': 'Defaults loaded!',
+                    'message': 'Accounting defaults have been set automatically.',
                     'type': 'success',
                     'sticky': False,
                 }
@@ -186,15 +186,15 @@ class ShopifyConfig(models.Model):
                 'type': 'ir.actions.client',
                 'tag': 'display_notification',
                 'params': {
-                    'title': 'Geen wijzigingen',
-                    'message': 'Instellingen waren al ingevuld of konden niet worden aangemaakt.',
+                    'title': 'No changes',
+                    'message': 'Settings were already filled in or could not be created.',
                     'type': 'warning',
                     'sticky': False,
                 }
             }
 
     def _fetch_locations(self):
-        """Haal alle actieve Shopify locaties op via GraphQL."""
+        """Fetch all active Shopify locations via GraphQL."""
         try:
             query = """
             {
@@ -236,25 +236,25 @@ class ShopifyConfig(models.Model):
                         'warehouse_id': default_warehouse.id if (default_warehouse and i == 0) else False,
                         'sync_inventory': i == 0,
                     })
-                    _logger.info(f"Locatie aangemaakt: {location.get('name')}")
+                    _logger.info(f"Location created: {location.get('name')}")
 
             if locations:
                 self.shopify_location_id = str(locations[0].get('legacyResourceId'))
 
         except Exception as e:
-            _logger.error(f"Locaties ophalen mislukt: {e}")
+            _logger.error(f"Failed to fetch locations: {e}")
 
     def _fetch_location_id(self):
         self._fetch_locations()
 
     def _get_or_create_shipping_product(self):
-        """Haal het standaard verzendproduct op of maak het aan."""
+        """Get or create the default shipping product."""
         product = self.env['product.product'].search([
             ('default_code', '=', 'SHOPIFY-SHIPPING')
         ], limit=1)
         if not product:
             product = self.env['product.product'].create({
-                'name': 'Shopify Verzendkosten',
+                'name': 'Shopify Shipping',
                 'default_code': 'SHOPIFY-SHIPPING',
                 'type': 'service',
                 'invoice_policy': 'order',
@@ -262,7 +262,7 @@ class ShopifyConfig(models.Model):
         return product
 
     def action_import_shipping_methods(self):
-        """Importeer verzendmethodes uit Shopify, maak Odoo carriers aan en koppel ze."""
+        """Import shipping methods from Shopify and create carrier mappings."""
         self.ensure_one()
 
         query = """
@@ -321,8 +321,8 @@ class ShopifyConfig(models.Model):
                 'type': 'ir.actions.client',
                 'tag': 'display_notification',
                 'params': {
-                    'title': 'Fout',
-                    'message': 'Verzendmethodes ophalen mislukt.',
+                    'title': 'Error',
+                    'message': 'Failed to fetch shipping methods.',
                     'type': 'danger',
                     'sticky': False,
                 }
@@ -347,13 +347,11 @@ class ShopifyConfig(models.Model):
                         if not method_name or not method.get('active'):
                             continue
 
-                        # Voeg zone toe als naam al eerder gezien is
                         unique_name = method_name
                         if method_name in method_names_seen:
                             unique_name = f"{method_name} ({zone_name})"
                         method_names_seen.add(method_name)
 
-                        # Check of mapping al bestaat
                         existing_mapping = self.env['shopify.carrier.mapping'].search([
                             ('config_id', '=', self.id),
                             ('shopify_method_name', '=', unique_name),
@@ -363,56 +361,49 @@ class ShopifyConfig(models.Model):
                             skipped += 1
                             continue
 
-                        # Bepaal prijs en type op basis van rateProvider
                         rate_provider = method.get('rateProvider', {})
                         provider_type = rate_provider.get('__typename', '')
 
                         if provider_type == 'DeliveryRateDefinition':
                             fixed_price = float(rate_provider.get('price', {}).get('amount', 0))
-                            delivery_type = 'fixed'
                         else:
-                            # DeliveryParticipant — berekende prijs via externe carrier
                             fixed_price = 0.0
-                            delivery_type = 'fixed'
 
-                        # Zoek bestaande Odoo carrier op naam
                         carrier = self.env['delivery.carrier'].search([
                             ('name', '=', unique_name),
                             ('active', '=', True),
                         ], limit=1)
 
                         if not carrier:
-                            # Maak nieuwe carrier aan in Odoo
                             carrier = self.env['delivery.carrier'].create({
                                 'name': unique_name,
-                                'delivery_type': delivery_type,
+                                'delivery_type': 'fixed',
                                 'fixed_price': fixed_price,
                                 'product_id': shipping_product.id,
                             })
-                            _logger.info(f"Carrier aangemaakt: {unique_name} (€{fixed_price})")
+                            _logger.info(f"Carrier created: {unique_name} (€{fixed_price})")
 
-                        # Maak mapping aan
                         self.env['shopify.carrier.mapping'].create({
                             'config_id': self.id,
                             'shopify_method_name': unique_name,
                             'carrier_id': carrier.id,
                         })
                         imported += 1
-                        _logger.info(f"Verzendmethode gekoppeld: {unique_name} → {carrier.name}")
+                        _logger.info(f"Shipping method linked: {unique_name} → {carrier.name}")
 
         return {
             'type': 'ir.actions.client',
             'tag': 'display_notification',
             'params': {
-                'title': 'Verzendmethodes geïmporteerd',
-                'message': f"{imported} nieuwe methodes geïmporteerd, {skipped} al aanwezig.",
+                'title': 'Shipping methods imported',
+                'message': f"{imported} new methods imported, {skipped} already present.",
                 'type': 'success',
                 'sticky': False,
             }
         }
 
     def _register_webhooks(self):
-        """Registreer webhooks bij Shopify via GraphQL."""
+        """Register webhooks with Shopify via GraphQL."""
         base_url = self._get_base_url()
 
         webhook_topics = [
@@ -473,7 +464,7 @@ class ShopifyConfig(models.Model):
 
         for topic, callback_url in webhook_topics:
             if callback_url in existing_webhooks:
-                _logger.info(f"Webhook al geregistreerd: {topic}")
+                _logger.info(f"Webhook already registered: {topic}")
                 continue
             try:
                 result = self._graphql(create_mutation, {
@@ -483,14 +474,14 @@ class ShopifyConfig(models.Model):
                 if result:
                     errors = result.get('webhookSubscriptionCreate', {}).get('userErrors', [])
                     if errors:
-                        _logger.warning(f"Webhook registratie fout voor {topic}: {errors}")
+                        _logger.warning(f"Webhook registration error for {topic}: {errors}")
                     else:
-                        _logger.info(f"Webhook geregistreerd via GraphQL: {topic}")
+                        _logger.info(f"Webhook registered via GraphQL: {topic}")
             except Exception as e:
-                _logger.error(f"Webhook registratie fout: {e}")
+                _logger.error(f"Webhook registration error: {e}")
 
     def _register_carrier_service(self):
-        """Registreer onze app als CarrierService bij Shopify."""
+        """Register our app as a CarrierService with Shopify."""
         try:
             base_url = self._get_base_url()
             callback_url = f"{base_url}/shopify/carrier/rates"
@@ -502,7 +493,7 @@ class ShopifyConfig(models.Model):
                 existing = response.json().get('carrier_services', [])
                 for cs in existing:
                     if cs.get('callback_url') == callback_url:
-                        _logger.info(f"CarrierService al geregistreerd voor {self.shop_name}")
+                        _logger.info(f"CarrierService already registered for {self.shop_name}")
                         return True
 
             response = requests.post(
@@ -522,7 +513,7 @@ class ShopifyConfig(models.Model):
             if response.status_code in (200, 201):
                 carrier_service_id = response.json().get('carrier_service', {}).get('id')
                 self.write({'shopify_carrier_service_id': str(carrier_service_id)})
-                _logger.info(f"CarrierService geregistreerd voor {self.shop_name}: {carrier_service_id}")
+                _logger.info(f"CarrierService registered for {self.shop_name}: {carrier_service_id}")
                 return True
             else:
                 error_data = response.json()
@@ -533,17 +524,17 @@ class ShopifyConfig(models.Model):
                     error_text = str(error_msg)
 
                 _logger.warning(
-                    f"CarrierService niet beschikbaar voor {self.shop_name}: {error_text}. "
-                    f"Stel verzendmethodes handmatig in via Shopify."
+                    f"CarrierService not available for {self.shop_name}: {error_text}. "
+                    f"Configure shipping methods manually in Shopify."
                 )
                 return False
 
         except Exception as e:
-            _logger.error(f"CarrierService registratie fout: {e}")
+            _logger.error(f"CarrierService registration error: {e}")
             return False
 
     def _unregister_carrier_service(self):
-        """Verwijder onze CarrierService bij Shopify."""
+        """Remove our CarrierService from Shopify."""
         try:
             if not self.shopify_carrier_service_id:
                 return True
@@ -553,14 +544,14 @@ class ShopifyConfig(models.Model):
 
             if response.status_code in (200, 204):
                 self.write({'shopify_carrier_service_id': False})
-                _logger.info(f"CarrierService verwijderd voor {self.shop_name}")
+                _logger.info(f"CarrierService removed for {self.shop_name}")
                 return True
             else:
-                _logger.warning(f"CarrierService verwijderen mislukt: {response.text[:200]}")
+                _logger.warning(f"Failed to remove CarrierService: {response.text[:200]}")
                 return False
 
         except Exception as e:
-            _logger.error(f"CarrierService verwijderen fout: {e}")
+            _logger.error(f"CarrierService removal error: {e}")
             return False
 
     def action_fetch_locations(self):
@@ -577,7 +568,7 @@ class ShopifyConfig(models.Model):
     def _get_valid_token(self):
         if self.access_token_expires_at:
             if datetime.utcnow() >= self.access_token_expires_at - timedelta(minutes=5):
-                _logger.info(f"Token verlopen voor {self.shop_name}, vernieuwen...")
+                _logger.info(f"Token expired for {self.shop_name}, refreshing...")
                 self._refresh_access_token()
         return self.access_token
 
@@ -624,9 +615,9 @@ class ShopifyConfig(models.Model):
     def action_start_oauth(self):
         self.ensure_one()
         if not self.client_id:
-            raise UserError("Vul eerst de Client ID in.")
+            raise UserError("Please fill in the Client ID first.")
         if not self.shop_name:
-            raise UserError("Vul eerst de winkelnaam in.")
+            raise UserError("Please fill in the shop name first.")
         shop = f"{self.shop_name}.myshopify.com"
         state = self.env['shopify.oauth.state'].create_state(self.shop_name)
         oauth_url = self._build_oauth_url(shop, state)
@@ -668,17 +659,17 @@ class ShopifyConfig(models.Model):
                 return True
             else:
                 self.state = 'error'
-                _logger.error(f"Token exchange mislukt: {response.text}")
+                _logger.error(f"Token exchange failed: {response.text}")
                 return False
         except Exception as e:
-            _logger.error(f"Token exchange fout: {e}")
+            _logger.error(f"Token exchange error: {e}")
             self.state = 'error'
             return False
 
     def _refresh_access_token(self):
         self.ensure_one()
         if not self.refresh_token:
-            _logger.error(f"Geen refresh token voor {self.shop_name}")
+            _logger.error(f"No refresh token for {self.shop_name}")
             return False
         try:
             url = f"{self.shop_url}/admin/oauth/access_token"
@@ -700,20 +691,20 @@ class ShopifyConfig(models.Model):
                 if token_data.get('expires_in'):
                     vals['access_token_expires_at'] = datetime.utcnow() + timedelta(seconds=token_data['expires_in'])
                 self.write(vals)
-                _logger.info(f"Token vernieuwd voor {self.shop_name}")
+                _logger.info(f"Token refreshed for {self.shop_name}")
                 return True
             else:
-                _logger.error(f"Token refresh mislukt: {response.text}")
+                _logger.error(f"Token refresh failed: {response.text}")
                 self.state = 'error'
                 return False
         except Exception as e:
-            _logger.error(f"Token refresh fout: {e}")
+            _logger.error(f"Token refresh error: {e}")
             return False
 
     def action_test_connection(self):
         self.ensure_one()
         if not self.access_token:
-            raise UserError("Geen access token. Klik eerst op Verbind met Shopify.")
+            raise UserError("No access token. Please connect to Shopify first.")
         try:
             query = "{ shop { name } }"
             data = self._graphql(query)
@@ -726,21 +717,21 @@ class ShopifyConfig(models.Model):
                     'type': 'ir.actions.client',
                     'tag': 'display_notification',
                     'params': {
-                        'title': 'Verbinding geslaagd!',
-                        'message': f"Verbonden met: {shop_name}",
+                        'title': 'Connection successful!',
+                        'message': f"Connected to: {shop_name}",
                         'type': 'success',
                         'sticky': False,
                     }
                 }
             else:
                 self.state = 'error'
-                raise UserError("Verbinding mislukt.")
+                raise UserError("Connection failed.")
         except requests.exceptions.ConnectionError:
             self.state = 'error'
-            raise UserError("Kan geen verbinding maken.")
+            raise UserError("Could not establish connection.")
         except requests.exceptions.Timeout:
             self.state = 'error'
-            raise UserError("Verbinding time-out.")
+            raise UserError("Connection timed out.")
 
     def action_import_orders(self):
         self.ensure_one()
@@ -750,11 +741,11 @@ class ShopifyConfig(models.Model):
                 'type': 'ir.actions.client',
                 'tag': 'display_notification',
                 'params': {
-                    'title': 'Import geslaagd!',
-                    'message': f"{imported} bestellingen geïmporteerd.",
+                    'title': 'Import successful!',
+                    'message': f"{imported} orders imported.",
                     'type': 'success',
                     'sticky': False,
                 }
             }
         else:
-            raise UserError("Bestellingen importeren mislukt.")
+            raise UserError("Failed to import orders.")
