@@ -8,7 +8,7 @@
             <notebook position="inside">
                 <page string="Shopify" name="shopify">
                     <group>
-                        <group string="Shopify Instellingen">
+                        <group string="Shopify Settings">
                             <field name="shopify_published"/>
                             <field name="shopify_tags"/>
                         </group>
@@ -20,14 +20,14 @@
                                    invisible="not shopify_sync_error"/>
                         </group>
                     </group>
-                    <group string="Shopify Voorraad per locatie">
+                    <group string="Shopify Inventory per Location">
                         <field name="shopify_inventory_html" widget="html" readonly="1" nolabel="1"/>
                     </group>
-                    <group string="Shopify Beschrijving">
+                    <group string="Shopify Description">
                         <field name="shopify_description" widget="html"/>
                     </group>
                     <button name="action_sync_to_shopify"
-                            string="Sync naar Shopify"
+                            string="Sync to Shopify"
                             type="object"
                             class="btn-primary"
                             invisible="not shopify_published and not shopify_product_id"/>
@@ -37,7 +37,7 @@
     </record>
 
     <record id="action_shopify_sync_products" model="ir.actions.server">
-        <field name="name">Sync naar Shopify</field>
+        <field name="name">Sync to Shopify</field>
         <field name="model_id" ref="product.model_product_template"/>
         <field name="binding_model_id" ref="product.model_product_template"/>
         <field name="binding_type">action</field>
