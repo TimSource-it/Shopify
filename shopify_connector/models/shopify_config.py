@@ -561,7 +561,7 @@ class ShopifyConfig(models.Model):
 
         vals = {
             'name': title,
-            'type': 'consu',
+            'type': 'product',
             'list_price': price,
             'sale_ok': True,
             'purchase_ok': True,
@@ -598,7 +598,7 @@ class ShopifyConfig(models.Model):
             price = float(variants[0]['node'].get('price', 0)) if variants else 0.0
             product = self.env['product.template'].create({
                 'name': title,
-                'type': 'consu',
+                'type': 'product',
                 'list_price': price,
                 'sale_ok': True,
                 'purchase_ok': True,
@@ -710,7 +710,6 @@ class ShopifyConfig(models.Model):
                     write_vals['default_code'] = sku
                 odoo_variant.write(write_vals)
 
-                # Haal voorraad op via aparte query
                 if shopify_inventory_item_id:
                     inventory_levels = self._get_inventory_levels(shopify_inventory_item_id)
 
