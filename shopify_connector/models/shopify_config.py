@@ -561,7 +561,8 @@ class ShopifyConfig(models.Model):
 
         vals = {
             'name': title,
-            'type': 'product',
+            'type': 'consu',
+            'is_storable': True,
             'list_price': price,
             'sale_ok': True,
             'purchase_ok': True,
@@ -598,7 +599,8 @@ class ShopifyConfig(models.Model):
             price = float(variants[0]['node'].get('price', 0)) if variants else 0.0
             product = self.env['product.template'].create({
                 'name': title,
-                'type': 'product',
+                'type': 'consu',
+                'is_storable': True,
                 'list_price': price,
                 'sale_ok': True,
                 'purchase_ok': True,
