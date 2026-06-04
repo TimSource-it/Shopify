@@ -377,7 +377,6 @@ class ShopifyConfig(models.Model):
                                 'fixed_price': fixed_price,
                                 'product_id': shipping_product.id,
                             })
-                            _logger.info(f"Carrier created: {unique_name} (€{fixed_price})")
 
                         self.env['shopify.carrier.mapping'].create({
                             'config_id': self.id,
@@ -401,7 +400,6 @@ class ShopifyConfig(models.Model):
         """Import all products from Shopify into Odoo."""
         self.ensure_one()
 
-        # Check of locaties gekoppeld zijn
         location_mappings = self.env['shopify.location'].search([
             ('config_id', '=', self.id),
             ('sync_inventory', '=', True),
@@ -455,19 +453,6 @@ class ShopifyConfig(models.Model):
                           inventoryItem {
                             id
                             legacyResourceId
-                            inventoryLevels(first: 10) {
-                              edges {
-                                node {
-                                  location {
-                                    legacyResourceId
-                                  }
-                                  quantities(names: ["on_hand"]) {
-                                    name
-                                    quantity
-                                  }
-                                }
-                              }
-                            }
                           }
                           selectedOptions {
                             name
@@ -482,17 +467,21 @@ class ShopifyConfig(models.Model):
             }
             """
 
-            variables = {'first': 50, 'after': after_cursor}
+            variables = {'first': 10, 'after': after_cursor}
             data = self._graphql(query, variables)
 
             if not data:
+                _logger.error("No data returned from Shopify products query")
                 break
 
             page_info = data.get('products', {}).get('pageInfo', {})
             has_next_page = page_info.get('hasNextPage', False)
             after_cursor = page_info.get('endCursor')
 
-            for edge in data.get('products', {}).get('edges', []):
+            edges = data.get('products', {}).get('edges', [])
+            _logger.info(f"Shopify product import: {len(edges)} products fetched")
+
+            for edge in edges:
                 try:
                     node = edge['node']
                     result = self._import_product_from_shopify(node, location_mappings)
@@ -505,6 +494,8 @@ class ShopifyConfig(models.Model):
                 except Exception as e:
                     _logger.error(f"Product import error: {e}")
                     errors += 1
+
+        _logger.info(f"Product import complete: {imported} imported, {skipped} skipped, {errors} errors")
 
         return {
             'type': 'ir.actions.client',
@@ -526,18 +517,15 @@ class ShopifyConfig(models.Model):
         tags = ','.join(node.get('tags', []))
         variants = node.get('variants', {}).get('edges', [])
 
-        # Check of product al bestaat via shopify_product_id
         existing = self.env['product.template'].search([
             ('shopify_product_id', '=', str(shopify_product_id))
         ], limit=1)
 
         if existing:
             _logger.info(f"Product already linked: {title}")
-            # Update variant IDs en voorraad wel
             self._update_variant_ids_and_inventory(existing, variants, location_mappings)
             return 'skipped'
 
-        # Bepaal of product varianten heeft
         has_real_variants = len(variants) > 1 or (
             len(variants) == 1 and
             variants[0]['node'].get('selectedOptions', [{}])[0].get('value') != 'Default Title'
@@ -551,7 +539,6 @@ class ShopifyConfig(models.Model):
         if not product:
             return 'error'
 
-        # Zet Shopify velden
         product.write({
             'shopify_product_id': str(shopify_product_id),
             'shopify_published': status == 'ACTIVE',
@@ -561,14 +548,13 @@ class ShopifyConfig(models.Model):
             'shopify_last_sync': fields.Datetime.now(),
         })
 
-        # Koppel variant IDs en importeer voorraad
         self._update_variant_ids_and_inventory(product, variants, location_mappings)
 
         _logger.info(f"Product imported from Shopify: {title}")
         return 'imported'
 
     def _create_simple_product(self, node, variants):
-        """Maak een enkelvoudig product aan in Odoo."""
+        """Create a simple product in Odoo."""
         title = node.get('title', '')
         price = float(variants[0]['node'].get('price', 0)) if variants else 0.0
         sku = variants[0]['node'].get('sku', '') if variants else ''
@@ -591,10 +577,9 @@ class ShopifyConfig(models.Model):
             return False
 
     def _create_product_with_variants(self, node, variants):
-        """Maak een product met varianten aan in Odoo."""
+        """Create a product with variants in Odoo."""
         title = node.get('title', '')
 
-        # Verzamel alle attributen en waarden
         attributes = {}
         for variant_edge in variants:
             variant_node = variant_edge['node']
@@ -619,7 +604,6 @@ class ShopifyConfig(models.Model):
                 'purchase_ok': True,
             })
 
-            # Voeg attributen toe
             for attr_name, attr_values in attributes.items():
                 attribute = self.env['product.attribute'].search([
                     ('name', '=', attr_name)
@@ -652,8 +636,36 @@ class ShopifyConfig(models.Model):
             _logger.error(f"Failed to create product with variants {title}: {e}")
             return False
 
+    def _get_inventory_levels(self, inventory_item_id):
+        """Fetch inventory levels per location for one inventory item."""
+        query = """
+        query getInventoryLevels($id: ID!) {
+          inventoryItem(id: $id) {
+            inventoryLevels(first: 10) {
+              edges {
+                node {
+                  location {
+                    legacyResourceId
+                  }
+                  quantities(names: ["on_hand"]) {
+                    name
+                    quantity
+                  }
+                }
+              }
+            }
+          }
+        }
+        """
+        data = self._graphql(query, {
+            'id': f"gid://shopify/InventoryItem/{inventory_item_id}"
+        })
+        if not data:
+            return []
+        return data.get('inventoryItem', {}).get('inventoryLevels', {}).get('edges', [])
+
     def _update_variant_ids_and_inventory(self, product, shopify_variants, location_mappings):
-        """Koppel Shopify variant IDs en importeer voorraad."""
+        """Link Shopify variant IDs and import inventory."""
         for variant_edge in shopify_variants:
             variant_node = variant_edge['node']
             shopify_variant_id = str(variant_node.get('legacyResourceId', ''))
@@ -661,20 +673,16 @@ class ShopifyConfig(models.Model):
                 variant_node.get('inventoryItem', {}).get('legacyResourceId', '')
             )
             sku = variant_node.get('sku', '')
-            price = float(variant_node.get('price', 0))
             selected_options = variant_node.get('selectedOptions', [])
 
-            # Zoek overeenkomende Odoo variant
             odoo_variant = None
 
-            # Zoek op SKU
             if sku:
                 odoo_variant = self.env['product.product'].search([
                     ('product_tmpl_id', '=', product.id),
                     ('default_code', '=', sku),
                 ], limit=1)
 
-            # Zoek op variant opties
             if not odoo_variant and selected_options:
                 option_values = [
                     opt['value'] for opt in selected_options
@@ -690,7 +698,6 @@ class ShopifyConfig(models.Model):
                             odoo_variant = variant
                             break
 
-            # Fallback: eerste variant
             if not odoo_variant and product.product_variant_ids:
                 odoo_variant = product.product_variant_ids[0]
 
@@ -703,34 +710,32 @@ class ShopifyConfig(models.Model):
                     write_vals['default_code'] = sku
                 odoo_variant.write(write_vals)
 
-                # Importeer voorraad per locatie
-                inventory_levels = variant_node.get('inventoryItem', {}).get(
-                    'inventoryLevels', {}
-                ).get('edges', [])
+                # Haal voorraad op via aparte query
+                if shopify_inventory_item_id:
+                    inventory_levels = self._get_inventory_levels(shopify_inventory_item_id)
 
-                for inv_edge in inventory_levels:
-                    inv_node = inv_edge['node']
-                    shopify_loc_id = str(
-                        inv_node.get('location', {}).get('legacyResourceId', '')
-                    )
-                    quantities = inv_node.get('quantities', [])
-                    on_hand_qty = 0
-                    for q in quantities:
-                        if q.get('name') == 'on_hand':
-                            on_hand_qty = q.get('quantity', 0)
-                            break
+                    for inv_edge in inventory_levels:
+                        inv_node = inv_edge['node']
+                        shopify_loc_id = str(
+                            inv_node.get('location', {}).get('legacyResourceId', '')
+                        )
+                        quantities = inv_node.get('quantities', [])
+                        on_hand_qty = 0
+                        for q in quantities:
+                            if q.get('name') == 'on_hand':
+                                on_hand_qty = q.get('quantity', 0)
+                                break
 
-                    # Zoek gekoppeld Odoo magazijn
-                    for mapping in location_mappings:
-                        if mapping.shopify_location_id == shopify_loc_id:
-                            if on_hand_qty > 0:
-                                self._set_inventory_in_odoo(
-                                    odoo_variant, mapping.warehouse_id, on_hand_qty
-                                )
-                            break
+                        for mapping in location_mappings:
+                            if mapping.shopify_location_id == shopify_loc_id:
+                                if on_hand_qty > 0:
+                                    self._set_inventory_in_odoo(
+                                        odoo_variant, mapping.warehouse_id, on_hand_qty
+                                    )
+                                break
 
     def _set_inventory_in_odoo(self, variant, warehouse, qty):
-        """Stel voorraad in in Odoo via stock.quant."""
+        """Set inventory in Odoo via stock.quant."""
         try:
             location = warehouse.lot_stock_id
             quant = self.env['stock.quant'].search([
