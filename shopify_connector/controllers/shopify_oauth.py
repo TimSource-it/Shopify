@@ -11,8 +11,8 @@ _logger = logging.getLogger(__name__)
 
 def verify_shopify_hmac(query_string, secret):
     """
-    Verifieert Shopify HMAC via raw query string.
-    Shopify-compliant: strip alleen hmac parameter, gebruik rest as-is.
+    Verify Shopify HMAC via raw query string.
+    Shopify-compliant: strip only hmac parameter, use rest as-is.
     """
     try:
         hmac_received = None
@@ -34,12 +34,12 @@ def verify_shopify_hmac(query_string, secret):
         ).hexdigest()
         return hmac.compare_digest(digest, hmac_received)
     except Exception as e:
-        _logger.error(f"HMAC verificatie fout: {e}")
+        _logger.error(f"HMAC verification error: {e}")
         return False
 
 
 def sanitize_shop(shop):
-    """Valideert en normaliseert de shop parameter."""
+    """Validate and normalize the shop parameter."""
     if not shop:
         return None
     shop = shop.strip().lower()
@@ -52,7 +52,7 @@ def sanitize_shop(shop):
 class ShopifyOAuthController(http.Controller):
 
     def _get_client_secret(self, shop_name=None):
-        """Haalt client secret op — per shop of globaal."""
+        """Get client secret — per shop or global."""
         env = request.env['ir.config_parameter'].sudo()
         if shop_name:
             secret = env.get_param(f'shopify.client_secret.{shop_name}')
@@ -62,28 +62,28 @@ class ShopifyOAuthController(http.Controller):
 
     @http.route('/shopify/test', type='http', auth='none')
     def shopify_test(self, **kwargs):
-        return 'Shopify controller werkt!'
+        return 'Shopify connector is working!'
 
     @http.route('/shopify/success', type='http', auth='public', csrf=False)
     def shopify_success(self, **kwargs):
         shop = kwargs.get('shop', '')
         return f"""<!DOCTYPE html>
-        <html><head><title>Shopify Koppeling</title></head>
+        <html><head><title>Shopify Connection</title></head>
         <body style="font-family:sans-serif;text-align:center;padding:50px">
-        <h1>✅ Shopify koppeling geslaagd!</h1>
-        <p>Winkel <b>{shop}</b> is succesvol gekoppeld aan Odoo.</p>
-        <p>Je kunt dit venster sluiten en teruggaan naar Odoo.</p>
+        <h1>✅ Shopify connection successful!</h1>
+        <p>Shop <b>{shop}</b> has been successfully connected to Odoo.</p>
+        <p>You can close this window and return to Odoo.</p>
         </body></html>"""
 
     @http.route('/shopify/error', type='http', auth='public', csrf=False)
     def shopify_error(self, **kwargs):
         error = kwargs.get('error', 'unknown')
         return f"""<!DOCTYPE html>
-        <html><head><title>Shopify Fout</title></head>
+        <html><head><title>Shopify Error</title></head>
         <body style="font-family:sans-serif;text-align:center;padding:50px">
-        <h1>❌ Shopify koppeling mislukt</h1>
-        <p>Fout: <b>{error}</b></p>
-        <p>Neem contact op met uw beheerder.</p>
+        <h1>❌ Shopify connection failed</h1>
+        <p>Error: <b>{error}</b></p>
+        <p>Please contact your administrator.</p>
         </body></html>"""
 
     @http.route('/shopify/install', type='http', auth='public', csrf=False)
@@ -94,26 +94,22 @@ class ShopifyOAuthController(http.Controller):
 
         shop_name = shop.replace('.myshopify.com', '')
 
-        # HMAC verificatie via raw query string
         client_secret = self._get_client_secret(shop_name)
         if client_secret:
             query_string = request.httprequest.query_string.decode('utf-8')
             if not verify_shopify_hmac(query_string, client_secret):
-                _logger.warning(f"HMAC verificatie mislukt voor: {shop_name}")
+                _logger.warning(f"HMAC verification failed for: {shop_name}")
                 return request.redirect('/shopify/error?error=invalid_hmac')
 
-        # DB lookup na trust check
         config = request.env['shopify.config'].sudo().search([
             ('shop_name', '=', shop_name)
         ], limit=1)
 
         if not config:
-            _logger.warning(f"Geen configuratie voor winkel: {shop_name}")
+            _logger.warning(f"No configuration found for shop: {shop_name}")
             return request.redirect('/shopify/error?error=shop_not_found')
 
-        # Genereer en sla state op via transient model
         state = request.env['shopify.oauth.state'].sudo().create_state(shop_name)
-
         oauth_url = config.sudo()._build_oauth_url(shop, state)
         return request.redirect(oauth_url)
 
@@ -128,22 +124,19 @@ class ShopifyOAuthController(http.Controller):
 
         shop_name = shop.replace('.myshopify.com', '')
 
-        # State validatie — one-time use, expiry check
         state_shop = request.env['shopify.oauth.state'].sudo().validate_and_consume(state)
         if not state_shop or state_shop != shop_name:
-            _logger.warning(f"State validatie mislukt voor: {shop_name}")
+            _logger.warning(f"State validation failed for: {shop_name}")
             return request.redirect('/shopify/error?error=invalid_state')
 
-        # Optionele HMAC fallback check
         client_secret = self._get_client_secret(shop_name)
         if client_secret:
             query_string = request.httprequest.query_string.decode('utf-8')
             if 'hmac=' in query_string:
                 if not verify_shopify_hmac(query_string, client_secret):
-                    _logger.warning(f"Callback HMAC mislukt voor: {shop_name}")
+                    _logger.warning(f"Callback HMAC failed for: {shop_name}")
                     return request.redirect('/shopify/error?error=invalid_hmac')
 
-        # DB lookup na volledige validatie
         config = request.env['shopify.config'].sudo().search([
             ('shop_name', '=', shop_name)
         ], limit=1)
