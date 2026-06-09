@@ -6,7 +6,7 @@ _logger = logging.getLogger(__name__)
 
 class ShopifyOrderImport(models.AbstractModel):
     _name = 'shopify.order.import'
-    _description = 'Shopify Bestelling Import'
+    _description = 'Shopify Order Import'
 
     @api.model
     def _get_config(self, shop_name=None):
@@ -40,10 +40,10 @@ class ShopifyOrderImport(models.AbstractModel):
             invoice.action_post()
             if config.account_id:
                 self._register_payment(invoice, config)
-            _logger.info(f"Factuur aangemaakt voor order {order.name}")
+            _logger.info(f"Invoice created for order {order.name}")
             return invoice
         except Exception as e:
-            _logger.error(f"Factuur aanmaken mislukt voor {order.name}: {e}")
+            _logger.error(f"Invoice creation failed for {order.name}: {e}")
             return False
 
     @api.model
@@ -74,9 +74,9 @@ class ShopifyOrderImport(models.AbstractModel):
             )
             if lines:
                 invoice.js_assign_outstanding_line(lines[0].id)
-            _logger.info(f"Betaling geregistreerd voor {invoice.name}")
+            _logger.info(f"Payment registered for {invoice.name}")
         except Exception as e:
-            _logger.error(f"Betaling registreren mislukt: {e}")
+            _logger.error(f"Payment registration failed: {e}")
 
     @api.model
     def _get_or_create_partner(self, customer_data, shipping_address=None):
@@ -111,7 +111,7 @@ class ShopifyOrderImport(models.AbstractModel):
                 return self.env['res.partner'].browse(row[0])
 
             vals = {
-                'name': name or email or 'Shopify Klant',
+                'name': name or email or 'Shopify Customer',
                 'email': email,
                 'shopify_customer_id': shopify_customer_id,
                 'customer_rank': 1,
@@ -134,9 +134,9 @@ class ShopifyOrderImport(models.AbstractModel):
                         vals['country_id'] = country.id
             try:
                 partner = self.env['res.partner'].create(vals)
-                _logger.info(f"Nieuwe klant aangemaakt: {partner.name}")
+                _logger.info(f"New customer created: {partner.name}")
             except Exception as e:
-                _logger.warning(f"Klant aanmaak mislukt, opnieuw zoeken: {e}")
+                _logger.warning(f"Customer creation failed, retrying: {e}")
                 partner = self.env['res.partner'].search([
                     ('shopify_customer_id', '=', shopify_customer_id)
                 ], limit=1)
@@ -163,7 +163,7 @@ class ShopifyOrderImport(models.AbstractModel):
         ], limit=1)
         if not product:
             product = self.env['product.product'].create({
-                'name': 'Shopify Verzendkosten',
+                'name': 'Shopify Shipping',
                 'default_code': 'SHOPIFY-SHIPPING',
                 'type': 'service',
                 'invoice_policy': 'order',
@@ -177,7 +177,7 @@ class ShopifyOrderImport(models.AbstractModel):
         ], limit=1)
         if not product:
             product = self.env['product.product'].create({
-                'name': 'Shopify Korting',
+                'name': 'Shopify Discount',
                 'default_code': 'SHOPIFY-DISCOUNT',
                 'type': 'service',
                 'invoice_policy': 'order',
@@ -202,9 +202,8 @@ class ShopifyOrderImport(models.AbstractModel):
 
         for shipping in shipping_lines:
             price = float(shipping.get('price', 0))
-            title = shipping.get('title', 'Verzendkosten')
+            title = shipping.get('title', 'Shipping')
 
-            # Zoek carrier via mapping tabel
             carrier_mapping = self.env['shopify.carrier.mapping'].search([
                 ('config_id', '=', config.id),
                 ('shopify_method_name', '=', title),
@@ -214,9 +213,9 @@ class ShopifyOrderImport(models.AbstractModel):
             if carrier_mapping and not order.carrier_id and order.state == 'draft':
                 try:
                     order.write({'carrier_id': carrier_mapping.carrier_id.id})
-                    _logger.info(f"Carrier '{carrier_mapping.carrier_id.name}' gekoppeld aan order {order.name} via mapping")
+                    _logger.info(f"Carrier '{carrier_mapping.carrier_id.name}' linked to order {order.name} via mapping")
                 except Exception as e:
-                    _logger.warning(f"Carrier koppelen mislukt voor {order.name}: {e}")
+                    _logger.warning(f"Carrier linking failed for {order.name}: {e}")
             elif not carrier_mapping:
                 carrier = self.env['delivery.carrier'].search([
                     ('name', 'ilike', title),
@@ -225,9 +224,9 @@ class ShopifyOrderImport(models.AbstractModel):
                 if carrier and not order.carrier_id and order.state == 'draft':
                     try:
                         order.write({'carrier_id': carrier.id})
-                        _logger.info(f"Carrier '{carrier.name}' gekoppeld aan order {order.name} via naam")
+                        _logger.info(f"Carrier '{carrier.name}' linked to order {order.name} via name")
                     except Exception as e:
-                        _logger.warning(f"Carrier koppelen mislukt voor {order.name}: {e}")
+                        _logger.warning(f"Carrier linking failed for {order.name}: {e}")
 
             if price > 0:
                 self.env['sale.order.line'].create({
@@ -246,11 +245,11 @@ class ShopifyOrderImport(models.AbstractModel):
             return
         discount_product = self._get_or_create_discount_product()
         discount_codes = order_data.get('discount_codes', [])
-        codes = ', '.join([d.get('code', '') for d in discount_codes]) if discount_codes else 'Korting'
+        codes = ', '.join([d.get('code', '') for d in discount_codes]) if discount_codes else 'Discount'
         self.env['sale.order.line'].create({
             'order_id': order.id,
             'product_id': discount_product.id,
-            'name': f"Korting: {codes}",
+            'name': f"Discount: {codes}",
             'product_uom_qty': 1,
             'price_unit': -total_discounts,
             'tax_ids': [(5, 0, 0)],
@@ -315,7 +314,7 @@ class ShopifyOrderImport(models.AbstractModel):
 
             line_vals = {
                 'order_id': order.id,
-                'name': line.get('title', 'Onbekend product'),
+                'name': line.get('title', 'Unknown product'),
                 'product_uom_qty': line.get('quantity', 1),
                 'price_unit': shopify_price,
             }
@@ -326,7 +325,7 @@ class ShopifyOrderImport(models.AbstractModel):
                 odoo_price = self.env['shopify.sync']._get_price(product, config)
                 if round(odoo_price, 2) != round(shopify_price, 2):
                     warnings.append(
-                        f"⚠️ Prijsafwijking op '{product.name}': "
+                        f"⚠️ Price mismatch on '{product.name}': "
                         f"Shopify €{shopify_price:.2f} — Odoo €{odoo_price:.2f}"
                     )
             else:
@@ -340,9 +339,9 @@ class ShopifyOrderImport(models.AbstractModel):
                         'type': 'service',
                     })
                 line_vals['product_id'] = generic.id
-                line_vals['name'] = line.get('title', 'Onbekend product')
+                line_vals['name'] = line.get('title', 'Unknown product')
                 warnings.append(
-                    f"⚠️ Niet-gekoppeld product: '{line.get('title')}' "
+                    f"⚠️ Unlinked product: '{line.get('title')}' "
                     f"(Shopify variant ID: {shopify_variant_id})"
                 )
 
@@ -367,7 +366,7 @@ class ShopifyOrderImport(models.AbstractModel):
             if config.invoice_policy == 'on_confirm':
                 self._create_invoice(order, config)
 
-        _logger.info(f"Bestelling {shopify_order_number} geïmporteerd als {order.name}")
+        _logger.info(f"Order {shopify_order_number} imported as {order.name}")
         return order
 
     @api.model
@@ -385,26 +384,25 @@ class ShopifyOrderImport(models.AbstractModel):
                 invoices = order.invoice_ids.filtered(
                     lambda i: i.state == 'posted' and i.move_type == 'out_invoice'
                 )
-                # Controleer of er al een credit nota bestaat
                 existing_refunds = order.invoice_ids.filtered(
                     lambda i: i.move_type == 'out_refund'
                 )
                 if existing_refunds:
-                    _logger.info(f"Credit nota al aanwezig voor {order.name}")
+                    _logger.info(f"Credit note already exists for {order.name}")
                     return
                 for invoice in invoices:
                     refund = invoice._reverse_moves()
                     refund.action_post()
-                    _logger.info(f"Credit nota aangemaakt voor {invoice.name}")
+                    _logger.info(f"Credit note created for {invoice.name}")
             except Exception as e:
-                _logger.error(f"Credit nota aanmaken mislukt: {e}")
+                _logger.error(f"Credit note creation failed: {e}")
 
     @api.model
     def import_orders_from_shopify(self, config=None, since_id=None):
         if not config:
             config = self._get_config()
         if not config:
-            _logger.error("Geen actieve Shopify configuratie")
+            _logger.error("No active Shopify configuration found")
             return False
 
         try:
@@ -514,7 +512,7 @@ class ShopifyOrderImport(models.AbstractModel):
                 after_cursor = page_info.get('endCursor')
 
                 edges = orders_data.get('edges', [])
-                _logger.info(f"Shopify: {len(edges)} bestellingen gevonden")
+                _logger.info(f"Shopify: {len(edges)} orders found")
 
                 for edge in edges:
                     try:
@@ -523,14 +521,14 @@ class ShopifyOrderImport(models.AbstractModel):
                         self._import_order(order_data, config)
                         imported += 1
                     except Exception as e:
-                        _logger.error(f"Bestelling import fout: {e}")
+                        _logger.error(f"Order import error: {e}")
 
             config.last_order_sync = fields.Datetime.now()
-            _logger.info(f"{imported} bestellingen geïmporteerd")
+            _logger.info(f"{imported} orders imported")
             return imported
 
         except Exception as e:
-            _logger.error(f"Order import fout: {e}")
+            _logger.error(f"Order import error: {e}")
             return False
 
     @api.model
@@ -594,7 +592,7 @@ class ShopifyOrderImport(models.AbstractModel):
             shipping = edge['node']
             price = shipping.get('originalPriceSet', {}).get('shopMoney', {}).get('amount', '0')
             shipping_lines.append({
-                'title': shipping.get('title', 'Verzendkosten'),
+                'title': shipping.get('title', 'Shipping'),
                 'price': price,
             })
 
