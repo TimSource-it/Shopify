@@ -6,16 +6,13 @@
     'description': """
 Shopify Connector for Odoo 19
 ==============================
-
 Connect your Shopify store with Odoo for seamless synchronization of:
-
 * **Products** — sync products and variants from Odoo to Shopify
 * **Inventory** — real-time inventory synchronization
 * **Orders** — automatic order import with customer creation
 * **Fulfillment** — send tracking codes back to Shopify
 * **Returns** — process returns from Shopify or Odoo
 * **Accounting** — automatic invoicing and credit notes
-
 Key Features
 ------------
 * GraphQL API 2026-04 support
@@ -23,9 +20,11 @@ Key Features
 * Multi-location inventory support
 * Carrier mapping for shipping methods
 * GDPR compliant
+* English and Dutch interface
     """,
     'author': 'Source IT',
-    'website': 'https://source-it.nu',
+    'website': 'https://source-it.odoo.com/odoo-shopify',
+    'support': 'info@source-it.nu',
     'license': 'OPL-1',
     'price': 149.0,
     'currency': 'EUR',
