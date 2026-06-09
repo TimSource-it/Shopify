@@ -20,7 +20,7 @@ class StockQuant(models.Model):
                         'shopify_sync_status': 'pending'
                     })
             except Exception as e:
-                _logger.error(f"Voorraad pending zetten mislukt: {e}")
+                _logger.error(f"Failed to set inventory pending: {e}")
         return result
 
 
@@ -39,7 +39,7 @@ class StockPicking(models.Model):
                     'shopify_sync_status': 'pending'
                 })
         except Exception as e:
-            _logger.error(f"Voorraad pending zetten na levering mislukt: {e}")
+            _logger.error(f"Failed to set inventory pending after delivery: {e}")
 
         try:
             if self.picking_type_code == 'outgoing':
@@ -47,7 +47,7 @@ class StockPicking(models.Model):
             elif self.picking_type_code == 'incoming':
                 self._process_shopify_return()
         except Exception as e:
-            _logger.error(f"Shopify verwerking mislukt na validatie: {e}")
+            _logger.error(f"Shopify processing failed after validation: {e}")
 
         return result
 
@@ -57,7 +57,7 @@ class StockPicking(models.Model):
         ], limit=1)
 
     def _create_shopify_fulfillment(self):
-        """Maak een fulfillment aan in Shopify na levering validatie via GraphQL."""
+        """Create a fulfillment in Shopify after delivery validation via GraphQL."""
         sale_order = self.sale_id
         if not sale_order or not sale_order.shopify_order_id:
             return
@@ -100,7 +100,7 @@ class StockPicking(models.Model):
 
             data = config._graphql(query, variables)
             if not data:
-                _logger.error(f"Fulfillment orders ophalen mislukt voor {sale_order.name}")
+                _logger.error(f"Failed to fetch fulfillment orders for {sale_order.name}")
                 return
 
             fulfillment_order_ids = []
@@ -111,7 +111,7 @@ class StockPicking(models.Model):
                     fulfillment_order_ids.append(node['id'])
 
             if not fulfillment_order_ids:
-                _logger.warning(f"Geen open fulfillment orders voor {sale_order.name}")
+                _logger.warning(f"No open fulfillment orders for {sale_order.name}")
                 return
 
             mutation = """
@@ -153,17 +153,17 @@ class StockPicking(models.Model):
             if result:
                 errors = result.get('fulfillmentCreateV2', {}).get('userErrors', [])
                 if errors:
-                    _logger.error(f"Fulfillment aanmaken fout voor {sale_order.name}: {errors}")
+                    _logger.error(f"Fulfillment creation error for {sale_order.name}: {errors}")
                 else:
                     fulfillment = result.get('fulfillmentCreateV2', {}).get('fulfillment', {})
-                    _logger.info(f"Shopify fulfillment aangemaakt voor {sale_order.name}: {fulfillment.get('id')}")
+                    _logger.info(f"Shopify fulfillment created for {sale_order.name}: {fulfillment.get('id')}")
                     sale_order.write({'shopify_fulfillment_status': 'fulfilled'})
 
         except Exception as e:
-            _logger.error(f"Shopify fulfillment fout voor {sale_order.name}: {e}")
+            _logger.error(f"Shopify fulfillment error for {sale_order.name}: {e}")
 
     def _process_shopify_return(self):
-        """Verwerk een retour in Shopify na validatie retourlevering."""
+        """Process a return in Shopify after return picking validation."""
         origin_picking = self.env['stock.picking'].search([
             ('name', '=', self.origin),
         ], limit=1)
@@ -187,19 +187,18 @@ class StockPicking(models.Model):
             elif config.refund_policy == 'cancel':
                 if sale_order.state not in ('done', 'cancel'):
                     sale_order.action_cancel()
-                    _logger.info(f"Order {sale_order.name} geannuleerd wegens retour")
+                    _logger.info(f"Order {sale_order.name} cancelled due to return")
 
-            # Alleen Shopify refund aanmaken als die niet al door Shopify zelf gedaan is
             if sale_order.shopify_financial_status not in ('refunded', 'partially_refunded'):
                 self._update_shopify_return_status(sale_order, config)
             else:
-                _logger.info(f"Shopify refund al verwerkt voor {sale_order.name} — geen nieuwe refund aanmaken")
+                _logger.info(f"Shopify refund already processed for {sale_order.name} — skipping")
 
         except Exception as e:
-            _logger.error(f"Retour verwerking fout voor {sale_order.name}: {e}")
+            _logger.error(f"Return processing error for {sale_order.name}: {e}")
 
     def _create_return_credit_note(self, sale_order, config):
-        """Maak een credit nota aan voor geretourneerde producten."""
+        """Create a credit note for returned products."""
         try:
             return_lines = {}
             for move in self.move_ids:
@@ -216,27 +215,26 @@ class StockPicking(models.Model):
             )
 
             if not invoices:
-                _logger.warning(f"Geen factuur gevonden voor retour van {sale_order.name}")
+                _logger.warning(f"No invoice found for return of {sale_order.name}")
                 sale_order.message_post(
-                    body="⚠️ Retour ontvangen maar geen factuur gevonden voor credit nota. Verwerk handmatig.",
+                    body="⚠️ Return received but no invoice found for credit note. Please process manually.",
                     message_type='comment',
                     subtype_xmlid='mail.mt_note',
                 )
                 return
 
-            # Controleer of er al een credit nota bestaat
             existing_refunds = sale_order.invoice_ids.filtered(
                 lambda i: i.move_type == 'out_refund'
             )
             if existing_refunds:
-                _logger.info(f"Credit nota al aanwezig voor {sale_order.name} — geen nieuwe aanmaken")
+                _logger.info(f"Credit note already exists for {sale_order.name} — skipping")
                 return
 
             invoice = invoices.sorted('invoice_date', reverse=True)[0]
 
             credit_note_wizard = self.env['account.move.reversal'].create({
                 'move_ids': [(4, invoice.id)],
-                'reason': f"Retour voor {sale_order.name}",
+                'reason': f"Return for {sale_order.name}",
                 'journal_id': invoice.journal_id.id,
             })
             result = credit_note_wizard.reverse_moves()
@@ -253,28 +251,27 @@ class StockPicking(models.Model):
                         line.quantity = 0
 
                 credit_note.action_post()
-                _logger.info(f"Credit nota aangemaakt voor retour van {sale_order.name}: {credit_note.name}")
+                _logger.info(f"Credit note created for return of {sale_order.name}: {credit_note.name}")
 
                 sale_order.message_post(
-                    body=f"✅ Retour verwerkt — credit nota aangemaakt: {credit_note.name}",
+                    body=f"✅ Return processed — credit note created: {credit_note.name}",
                     message_type='comment',
                     subtype_xmlid='mail.mt_note',
                 )
 
         except Exception as e:
-            _logger.error(f"Credit nota aanmaken mislukt voor retour van {sale_order.name}: {e}")
+            _logger.error(f"Credit note creation failed for return of {sale_order.name}: {e}")
             sale_order.message_post(
-                body=f"⚠️ Retour ontvangen maar credit nota aanmaken mislukt: {e}. Verwerk handmatig.",
+                body=f"⚠️ Return received but credit note creation failed: {e}. Please process manually.",
                 message_type='comment',
                 subtype_xmlid='mail.mt_note',
             )
 
     def _update_shopify_return_status(self, sale_order, config):
-        """Maak een refund aan in Shopify na retour verwerking via GraphQL."""
+        """Create a refund in Shopify after return processing via GraphQL."""
         try:
             shopify_order_id = sale_order.shopify_order_id
 
-            # Stap 1: haal de Shopify order op om line item IDs en transacties te krijgen
             query = """
             query getOrder($orderId: ID!) {
               order(id: $orderId) {
@@ -310,13 +307,12 @@ class StockPicking(models.Model):
             })
 
             if not data or not data.get('order'):
-                _logger.warning(f"Shopify order niet gevonden voor {sale_order.name}")
+                _logger.warning(f"Shopify order not found for {sale_order.name}")
                 return
 
             shopify_line_items = data['order'].get('lineItems', {}).get('edges', [])
             transactions = data['order'].get('transactions', [])
 
-            # Stap 2: bepaal welke producten zijn teruggekomen
             return_lines = {}
             for move in self.move_ids:
                 if move.quantity > 0:
@@ -325,10 +321,9 @@ class StockPicking(models.Model):
                         return_lines[str(variant_id)] = return_lines.get(str(variant_id), 0) + int(move.quantity)
 
             if not return_lines:
-                _logger.warning(f"Geen retour producten gevonden voor {sale_order.name}")
+                _logger.warning(f"No return products found for {sale_order.name}")
                 return
 
-            # Stap 3: koppel aan Shopify line items
             refund_line_items = []
             refund_amount = 0.0
             for edge in shopify_line_items:
@@ -349,17 +344,15 @@ class StockPicking(models.Model):
                             break
 
             if not refund_line_items:
-                _logger.warning(f"Geen Shopify line items gevonden voor retour van {sale_order.name}")
+                _logger.warning(f"No Shopify line items found for return of {sale_order.name}")
                 return
 
-            # Stap 4: zoek de originele transactie voor terugbetaling
             parent_transaction_id = None
             for transaction in transactions:
                 if transaction.get('kind') in ('SALE', 'CAPTURE') and transaction.get('status') == 'SUCCESS':
                     parent_transaction_id = transaction['id']
                     break
 
-            # Stap 5: maak refund aan in Shopify
             idempotency_key = str(uuid.uuid4())
             mutation = """
             mutation refundCreate($input: RefundInput!, $idempotencyKey: String!) {
@@ -404,25 +397,25 @@ class StockPicking(models.Model):
             if result:
                 errors = result.get('refundCreate', {}).get('userErrors', [])
                 if errors:
-                    _logger.error(f"Shopify refund aanmaken mislukt voor {sale_order.name}: {errors}")
+                    _logger.error(f"Shopify refund creation failed for {sale_order.name}: {errors}")
                     sale_order.message_post(
-                        body=f"⚠️ Retour verwerkt in Odoo maar Shopify refund mislukt: {errors}. Verwerk handmatig in Shopify.",
+                        body=f"⚠️ Return processed in Odoo but Shopify refund failed: {errors}. Please process manually in Shopify.",
                         message_type='comment',
                         subtype_xmlid='mail.mt_note',
                     )
                 else:
                     refund = result.get('refundCreate', {}).get('refund', {})
                     refunded_amount = refund.get('totalRefundedSet', {}).get('shopMoney', {}).get('amount', 0)
-                    _logger.info(f"Shopify refund aangemaakt voor {sale_order.name}: €{refunded_amount}")
+                    _logger.info(f"Shopify refund created for {sale_order.name}: €{refunded_amount}")
                     sale_order.write({'shopify_fulfillment_status': 'returned'})
                     sale_order.message_post(
-                        body=f"✅ Shopify refund aangemaakt: €{refunded_amount}",
+                        body=f"✅ Shopify refund created: €{refunded_amount}",
                         message_type='comment',
                         subtype_xmlid='mail.mt_note',
                     )
 
         except Exception as e:
-            _logger.error(f"Shopify return status update fout voor {sale_order.name}: {e}")
+            _logger.error(f"Shopify return status update error for {sale_order.name}: {e}")
 
 
 class SaleOrder(models.Model):
@@ -444,7 +437,7 @@ class SaleOrder(models.Model):
         return result
 
     def _sync_inventory_direct(self):
-        """Sync voorraad direct naar Shopify zonder pending."""
+        """Sync inventory directly to Shopify without pending."""
         try:
             config = self.env['shopify.config'].search([
                 ('state', '=', 'connected'),
@@ -457,4 +450,4 @@ class SaleOrder(models.Model):
                 ):
                     self.env['shopify.sync'].sync_inventory_to_shopify(product.id, config)
         except Exception as e:
-            _logger.error(f"Directe voorraad sync mislukt: {e}")
+            _logger.error(f"Direct inventory sync failed: {e}")
