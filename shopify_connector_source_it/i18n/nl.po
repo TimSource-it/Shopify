@@ -15,88 +15,88 @@ msgstr ""
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: \n"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model_terms:ir.ui.view,arch_db:shopify_connector.view_shopify_config_form
 msgid "Accounting"
 msgstr "Boekhouding"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_config__active
 msgid "Active"
 msgstr "Actief"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_config__access_token
 msgid "Admin API Access Token"
 msgstr ""
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields.selection,name:shopify_connector.selection__shopify_config__published_scope__global
 msgid "All channels"
 msgstr "Alle kanalen"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_config__allow_backorder
 msgid "Allow Backorder"
 msgstr "Bestellen bij 0 voorraad"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields.selection,name:shopify_connector.selection__shopify_config__confirm_order_on__always
 msgid "Always confirm"
 msgstr "Altijd bevestigen"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields.selection,name:shopify_connector.selection__shopify_config__refund_policy__cancel
 msgid "Cancel order"
 msgstr "Order annuleren"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_config__client_id
 msgid "Client ID"
 msgstr ""
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_config__client_secret
 msgid "Client Secret"
 msgstr ""
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,help:shopify_connector.field_product_product__shopify_tags
 #: model:ir.model.fields,help:shopify_connector.field_product_template__shopify_tags
 msgid "Comma-separated tags for Shopify. E.g: new, sale, featured"
 msgstr "Komma gescheiden tags voor Shopify. Bijv: nieuw, sale, featured"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_config__confirm_order_on
 msgid "Confirm Order On"
 msgstr "Order bevestigen bij"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model_terms:ir.ui.view,arch_db:shopify_connector.view_shopify_config_form
 msgid "Connect to Shopify"
 msgstr "Verbind met Shopify"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields.selection,name:shopify_connector.selection__shopify_config__state__connected
 msgid "Connected"
 msgstr "Verbonden"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model,name:shopify_connector.model_res_partner
 msgid "Contact"
 msgstr "Contact"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_config__invoice_policy
 msgid "Create Invoice"
 msgstr "Factuur aanmaken"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields.selection,name:shopify_connector.selection__shopify_config__refund_policy__credit_note
 msgid "Create credit note"
 msgstr "Credit nota aanmaken"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_carrier_mapping__create_uid
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_config__create_uid
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_location__create_uid
@@ -105,7 +105,7 @@ msgstr "Credit nota aanmaken"
 msgid "Created by"
 msgstr "Aangemaakt door"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_carrier_mapping__create_date
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_config__create_date
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_location__create_date
@@ -114,27 +114,27 @@ msgstr "Aangemaakt door"
 msgid "Created on"
 msgstr "Aangemaakt op"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.ui.menu,name:shopify_connector.menu_shopify_customers
 msgid "Customers"
 msgstr "Klanten"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_config__shopify_location_id
 msgid "Default Shopify Location ID"
 msgstr "Standaard Shopify Locatie ID"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_config__tax_id
 msgid "Default Tax"
 msgstr "Standaard BTW"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,help:shopify_connector.field_shopify_config__tax_id
 msgid "Default tax for Shopify orders."
 msgstr "Standaard BTW voor Shopify orders."
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_product_product__display_name
 #: model:ir.model.fields,field_description:shopify_connector.field_product_template__display_name
 #: model:ir.model.fields,field_description:shopify_connector.field_res_partner__display_name
@@ -152,44 +152,44 @@ msgstr "Standaard BTW voor Shopify orders."
 msgid "Display Name"
 msgstr "Schermnaam"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields.selection,name:shopify_connector.selection__shopify_sync_job__state__done
 msgid "Done"
 msgstr "Voltooid"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,help:shopify_connector.field_shopify_config__shop_name
 msgid "E.g. my-store (without .myshopify.com)"
 msgstr "Bijv: mijn-winkel (zonder .myshopify.com)"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields.selection,name:shopify_connector.selection__product_template__shopify_sync_status__error
 #: model:ir.model.fields.selection,name:shopify_connector.selection__shopify_config__state__error
 #: model:ir.model.fields.selection,name:shopify_connector.selection__shopify_sync_job__state__error
 msgid "Error"
 msgstr "Fout"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_sync_job__error_message
 msgid "Error Message"
 msgstr "Foutmelding"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields.selection,name:shopify_connector.selection__shopify_sync_job__job_type__export_product
 msgid "Export product"
 msgstr "Product exporteren"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,help:shopify_connector.field_shopify_config__shopify_location_id
 msgid "Fallback location if no mapping is available."
 msgstr "Fallback locatie als geen mapping beschikbaar is."
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model_terms:ir.ui.view,arch_db:shopify_connector.view_shopify_config_form
 msgid "Fetch Locations"
 msgstr "Locaties ophalen"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_product_product__id
 #: model:ir.model.fields,field_description:shopify_connector.field_product_template__id
 #: model:ir.model.fields,field_description:shopify_connector.field_res_partner__id
@@ -207,71 +207,71 @@ msgstr "Locaties ophalen"
 msgid "ID"
 msgstr ""
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,help:shopify_connector.field_shopify_location__sync_inventory
 msgid ""
 "If checked, inventory from this warehouse will be synced to this location."
 msgstr "Als aangevinkt wordt de voorraad van dit magazijn naar deze locatie gesynchroniseerd."
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,help:shopify_connector.field_product_product__shopify_published
 #: model:ir.model.fields,help:shopify_connector.field_product_template__shopify_published
 msgid "If checked, this product will be synchronized to Shopify."
 msgstr "Als dit aangevinkt is wordt het product gesynchroniseerd naar Shopify."
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_config__sync_orders
 #: model_terms:ir.ui.view,arch_db:shopify_connector.view_shopify_config_form
 msgid "Import Orders"
 msgstr "Bestellingen importeren"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model_terms:ir.ui.view,arch_db:shopify_connector.view_shopify_config_form
 msgid "Import Shipping Methods"
 msgstr "Importeer verzendmethodes"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields.selection,name:shopify_connector.selection__shopify_sync_job__job_type__import_customer
 msgid "Import customer"
 msgstr "Klant importeren"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields.selection,name:shopify_connector.selection__shopify_sync_job__job_type__import_order
 msgid "Import order"
 msgstr "Bestelling importeren"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_sync_job__job_type
 msgid "Job Type"
 msgstr "Taak type"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_config__last_inventory_sync
 msgid "Last Inventory Sync"
 msgstr "Laatste voorraad sync"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_config__last_order_sync
 msgid "Last Order Sync"
 msgstr "Laatste bestelling sync"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_config__last_product_sync
 msgid "Last Product Sync"
 msgstr "Laatste product sync"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_product_product__shopify_last_sync
 #: model:ir.model.fields,field_description:shopify_connector.field_product_template__shopify_last_sync
 msgid "Last Shopify Sync"
 msgstr "Laatste Shopify sync"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model_terms:ir.ui.view,arch_db:shopify_connector.view_shopify_config_form
 msgid "Last Synchronizations"
 msgstr "Laatste synchronisaties"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_carrier_mapping__write_uid
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_config__write_uid
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_location__write_uid
@@ -280,7 +280,7 @@ msgstr "Laatste synchronisaties"
 msgid "Last Updated by"
 msgstr "Laatst bijgewerkt door"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_carrier_mapping__write_date
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_config__write_date
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_location__write_date
@@ -289,406 +289,406 @@ msgstr "Laatst bijgewerkt door"
 msgid "Last Updated on"
 msgstr "Laatst bijgewerkt op"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,help:shopify_connector.field_shopify_config__account_id
 msgid "Ledger account for Shopify payments."
 msgstr "Grootboekrekening voor Shopify betalingen."
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,help:shopify_connector.field_shopify_location__warehouse_id
 msgid "Link this Shopify location to an Odoo warehouse."
 msgstr "Koppel deze Shopify locatie aan een Odoo magazijn."
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model_terms:ir.ui.view,arch_db:shopify_connector.view_shopify_config_form
 msgid "Load Default Settings"
 msgstr "Standaard instellingen laden"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_config__location_ids
 #: model_terms:ir.ui.view,arch_db:shopify_connector.view_shopify_config_form
 msgid "Locations"
 msgstr "Locaties"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_sync_job__max_retries
 msgid "Max Retries"
 msgstr "Max pogingen"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields.selection,name:shopify_connector.selection__shopify_config__confirm_order_on__never
 msgid "Never auto-confirm"
 msgstr "Nooit automatisch bevestigen"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields.selection,name:shopify_connector.selection__shopify_config__invoice_policy__never
 msgid "Never automatically"
 msgstr "Nooit automatisch"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields.selection,name:shopify_connector.selection__shopify_config__state__draft
 msgid "Not Connected"
 msgstr "Niet verbonden"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields.selection,name:shopify_connector.selection__product_template__shopify_sync_status__not_synced
 msgid "Not synced"
 msgstr "Niet gesynchroniseerd"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model_terms:ir.ui.view,arch_db:shopify_connector.view_shopify_config_form
 msgid "OAuth Credentials"
 msgstr "OAuth Inloggegevens"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_carrier_mapping__carrier_id
 msgid "Odoo Carrier"
 msgstr "Odoo Vervoerder"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_location__warehouse_id
 msgid "Odoo Warehouse"
 msgstr "Odoo Magazijn"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields.selection,name:shopify_connector.selection__shopify_config__invoice_policy__on_confirm
 msgid "On confirmation"
 msgstr "Bij bevestiging"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields.selection,name:shopify_connector.selection__shopify_config__invoice_policy__on_delivery
 msgid "On delivery"
 msgstr "Bij levering"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model_terms:ir.ui.view,arch_db:shopify_connector.view_shopify_config_form
 msgid "Order Processing"
 msgstr "Order verwerking"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.ui.menu,name:shopify_connector.menu_shopify_orders
 msgid "Orders"
 msgstr "Bestellingen"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields.selection,name:shopify_connector.selection__shopify_config__confirm_order_on__paid
 msgid "Paid only"
 msgstr "Alleen bij betaald"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields.selection,name:shopify_connector.selection__shopify_config__confirm_order_on__authorized
 msgid "Paid or authorized"
 msgstr "Bij betaald of geautoriseerd"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_sync_job__payload
 msgid "Payload (JSON)"
 msgstr ""
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields.selection,name:shopify_connector.selection__shopify_config__refund_policy__manual
 msgid "Process manually"
 msgstr "Handmatig verwerken"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model,name:shopify_connector.model_product_template
 msgid "Product"
 msgstr "Product"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model,name:shopify_connector.model_product_product
 msgid "Product Variant"
 msgstr "Productvariant"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_product_product__shopify_published
 #: model:ir.model.fields,field_description:shopify_connector.field_product_template__shopify_published
 msgid "Publish on Shopify"
 msgstr "Publiceren op Shopify"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model,name:shopify_connector.model_stock_quant
 msgid "Quants"
 msgstr "Aantallen"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields.selection,name:shopify_connector.selection__product_template__shopify_sync_status__pending
 #: model:ir.model.fields.selection,name:shopify_connector.selection__shopify_sync_job__state__pending
 msgid "Queued"
 msgstr "In wachtrij"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_sync_job__record_id
 msgid "Record ID"
 msgstr "Record ID"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_sync_job__record_model
 msgid "Record Model"
 msgstr "Record Model"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_config__refresh_token
 msgid "Refresh Token"
 msgstr "Refresh Token"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_sync_job__retries
 msgid "Retries"
 msgstr "Pogingen"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_config__refund_policy
 msgid "Return Policy"
 msgstr "Retour verwerking"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields.selection,name:shopify_connector.selection__shopify_sync_job__state__running
 msgid "Running"
 msgstr "Bezig"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_config__published_scope
 msgid "Sales Channel"
 msgstr "Verkoopkanaal"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model,name:shopify_connector.model_sale_order
 msgid "Sales Order"
 msgstr "Verkooporder"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.ui.menu,name:shopify_connector.menu_shopify_config
 msgid "Settings"
 msgstr "Instellingen"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_config__carrier_mapping_ids
 msgid "Shipping Method Mappings"
 msgstr "Verzendmethode Mappings"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model_terms:ir.ui.view,arch_db:shopify_connector.view_shopify_config_form
 msgid "Shipping Methods"
 msgstr "Verzendmethodes"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_config__shop_name
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_oauth_state__shop_name
 msgid "Shop Name"
 msgstr "Winkelnaam"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model_terms:ir.ui.view,arch_db:shopify_connector.view_shopify_config_form
 msgid "Shop Settings"
 msgstr "Winkelinstellingen"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_config__shop_url
 msgid "Shop URL"
 msgstr "Winkel URL"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.ui.menu,name:shopify_connector.menu_shopify_root
 #: model_terms:ir.ui.view,arch_db:shopify_connector.view_product_template_shopify
 msgid "Shopify"
 msgstr "Shopify"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model,name:shopify_connector.model_shopify_order_import
 msgid "Shopify Bestelling Import"
 msgstr "Shopify Bestelling Import"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_config__shopify_carrier_service_id
 msgid "Shopify CarrierService ID"
 msgstr "Shopify CarrierService ID"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model,name:shopify_connector.model_shopify_carrier_service
 msgid "Shopify CarrierService berekeningen"
 msgstr "Shopify CarrierService berekeningen"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_carrier_mapping__config_id
 msgid "Shopify Configuration"
 msgstr "Shopify Configuratie"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model,name:shopify_connector.model_shopify_config
 msgid "Shopify Connection Settings"
 msgstr "Shopify Verbindingsinstellingen"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_res_partner__shopify_customer_id
 #: model:ir.model.fields,field_description:shopify_connector.field_res_users__shopify_customer_id
 msgid "Shopify Customer ID"
 msgstr "Shopify Klant ID"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.actions.act_window,name:shopify_connector.action_shopify_customers
 msgid "Shopify Customers"
 msgstr "Shopify Klanten"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_product_product__shopify_description
 #: model:ir.model.fields,field_description:shopify_connector.field_product_template__shopify_description
 #: model_terms:ir.ui.view,arch_db:shopify_connector.view_product_template_shopify
 msgid "Shopify Description"
 msgstr "Shopify Beschrijving"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_sale_order__shopify_fulfillment_status
 msgid "Shopify Fulfillment Status"
 msgstr "Shopify Verzendstatus"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_config__account_id
 msgid "Shopify Intermediary Account"
 msgstr "Shopify Tussenrekening"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_product_product__shopify_inventory_html
 #: model:ir.model.fields,field_description:shopify_connector.field_product_template__shopify_inventory_html
 msgid "Shopify Inventory"
 msgstr "Shopify Voorraad"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_product_product__shopify_inventory_item_id
 msgid "Shopify Inventory Item ID"
 msgstr "Shopify Inventory Item ID"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model_terms:ir.ui.view,arch_db:shopify_connector.view_product_template_shopify
 msgid "Shopify Inventory per Location"
 msgstr "Shopify Voorraad per locatie"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_location__shopify_location_id
 msgid "Shopify Location ID"
 msgstr "Shopify Locatie ID"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model,name:shopify_connector.model_shopify_location
 msgid "Shopify Location Mapping"
 msgstr "Shopify Locatie Mapping"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_location__shopify_location_name
 msgid "Shopify Location Name"
 msgstr "Shopify Locatie Naam"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_sale_order__shopify_order_id
 msgid "Shopify Order ID"
 msgstr "Shopify Order ID"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_sale_order__shopify_order_number
 msgid "Shopify Order Number"
 msgstr "Shopify Bestelnummer"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.actions.act_window,name:shopify_connector.action_shopify_orders
 msgid "Shopify Orders"
 msgstr "Shopify Bestellingen"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_sale_order__shopify_financial_status
 msgid "Shopify Payment Status"
 msgstr "Shopify Betaalstatus"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_config__pricelist_id
 msgid "Shopify Pricelist"
 msgstr "Prijslijst voor Shopify"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_product_product__shopify_product_id
 #: model:ir.model.fields,field_description:shopify_connector.field_product_template__shopify_product_id
 msgid "Shopify Product ID"
 msgstr "Shopify Product ID"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_sale_order__shopify_return_id
 msgid "Shopify Return ID"
 msgstr "Shopify Retour ID"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model_terms:ir.ui.view,arch_db:shopify_connector.view_product_template_shopify
 msgid "Shopify Settings"
 msgstr "Shopify Instellingen"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_carrier_mapping__shopify_method_name
 msgid "Shopify Shipping Method"
 msgstr "Shopify Verzendmethode"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model,name:shopify_connector.model_shopify_carrier_mapping
 msgid "Shopify Shipping Method Mapping"
 msgstr "Shopify Verzendmethode Mapping"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_location__config_id
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_sync_job__config_id
 msgid "Shopify Shop"
 msgstr "Shopify Winkel"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.actions.act_window,name:shopify_connector.action_shopify_config
 msgid "Shopify Shops"
 msgstr "Shopify Winkels"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model_terms:ir.ui.view,arch_db:shopify_connector.view_product_template_shopify
 msgid "Shopify Status"
 msgstr "Shopify Status"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_product_product__shopify_sync_error
 #: model:ir.model.fields,field_description:shopify_connector.field_product_template__shopify_sync_error
 msgid "Shopify Sync Error"
 msgstr "Shopify sync fout"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model,name:shopify_connector.model_shopify_sync_job
 msgid "Shopify Sync Job"
 msgstr "Shopify Synchronisatie Taak"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_product_product__shopify_sync_status
 #: model:ir.model.fields,field_description:shopify_connector.field_product_template__shopify_sync_status
 msgid "Shopify Sync Status"
 msgstr "Shopify sync status"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model,name:shopify_connector.model_shopify_sync
 msgid "Shopify Synchronisatie"
 msgstr "Shopify Synchronisatie"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_product_product__shopify_tags
 #: model:ir.model.fields,field_description:shopify_connector.field_product_template__shopify_tags
 msgid "Shopify Tags"
 msgstr "Shopify Tags"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_product_product__shopify_variant_id
 msgid "Shopify Variant ID"
 msgstr "Shopify Variant ID"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.actions.server,name:shopify_connector.ir_cron_shopify_sync_ir_actions_server
 msgid "Shopify: Automatic Sync"
 msgstr "Shopify: automatische synchronisatie"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.actions.server,name:shopify_connector.ir_cron_shopify_orders_ir_actions_server
 msgid "Shopify: Import Orders"
 msgstr "Shopify: bestellingen importeren"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,help:shopify_connector.field_product_product__shopify_description
 #: model:ir.model.fields,help:shopify_connector.field_product_template__shopify_description
 msgid ""
@@ -696,92 +696,92 @@ msgid ""
 "description."
 msgstr "Specifieke beschrijving voor Shopify. Leeg = website beschrijving of verkoopbeschrijving."
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_oauth_state__state
 msgid "State Token"
 msgstr "State Token"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_config__state
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_sync_job__state
 msgid "Status"
 msgstr "Status"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_config__sync_customers
 msgid "Sync Customers"
 msgstr "Klanten synchroniseren"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_config__sync_inventory
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_location__sync_inventory
 msgid "Sync Inventory"
 msgstr "Voorraad synchroniseren"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_config__sync_products
 msgid "Sync Products"
 msgstr "Producten synchroniseren"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.actions.server,name:shopify_connector.action_shopify_sync_products
 #: model_terms:ir.ui.view,arch_db:shopify_connector.view_product_template_shopify
 msgid "Sync to Shopify"
 msgstr "Sync naar Shopify"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields.selection,name:shopify_connector.selection__product_template__shopify_sync_status__synced
 msgid "Synced"
 msgstr "Gesynchroniseerd"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model_terms:ir.ui.view,arch_db:shopify_connector.view_shopify_config_form
 msgid "Synchronization"
 msgstr "Synchronisatie"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model,name:shopify_connector.model_shopify_oauth_state
 msgid "Temporary OAuth State for Shopify"
 msgstr "Tijdelijke OAuth State voor Shopify"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model_terms:ir.ui.view,arch_db:shopify_connector.view_shopify_config_form
 msgid "Test Connection"
 msgstr "Test verbinding"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,help:shopify_connector.field_shopify_carrier_mapping__carrier_id
 msgid "The carrier in Odoo linked to this shipping method"
 msgstr "De vervoerder in Odoo die gekoppeld wordt aan deze verzendmethode"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,help:shopify_connector.field_shopify_carrier_mapping__shopify_method_name
 msgid ""
 "The name of the shipping method as configured in Shopify, e.g. \"DHL Express"
 " Worldwide\""
 msgstr "De naam van de verzendmethode zoals die in Shopify staat, bijv. \"DHL Express Worldwide\""
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,field_description:shopify_connector.field_shopify_config__access_token_expires_at
 msgid "Token Expires At"
 msgstr "Token verloopt op"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model,name:shopify_connector.model_stock_picking
 msgid "Transfer"
 msgstr "Verplaatsing"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields.selection,name:shopify_connector.selection__shopify_sync_job__job_type__update_inventory
 msgid "Update inventory"
 msgstr "Voorraad bijwerken"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields.selection,name:shopify_connector.selection__shopify_config__published_scope__web
 msgid "Web only"
 msgstr "Alleen webshop"
 
-#. module: shopify_connector
+#. module: shopify_connector_source_it
 #: model:ir.model.fields,help:shopify_connector.field_shopify_config__pricelist_id
 msgid ""
 "Which pricelist is used for prices sent to Shopify. Empty = default sales "
